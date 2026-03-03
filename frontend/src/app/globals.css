@@ -1,0 +1,509 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────
+   DESIGN TOKEN SYSTEM — STORMY MORNING
+   palette: #384959 · #6A89A7 · #88BDF2 · #BDDDFC
+   neutrals: derived from #384959 (storm-base)
+   ──────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Light mode tokens ── */
+  --bg:              #f4f7fa;
+  --surface:         #ffffff;
+  --surface-muted:   #edf2f7;
+  --surface-subtle:  #dfe7ef;
+  --border:          #c8d5e0;
+  --border-muted:    #dfe7ef;
+  --text-primary:    #1a2733;
+  --text-secondary:  #384959;
+  --text-muted:      #6A89A7;
+
+  /* primary accent — steel blue */
+  --accent:          #4a7a9b;
+  --accent-hover:    #3d6a8a;
+  --accent-strong:   #384959;
+  --accent-subtle:   rgba(106, 137, 167, 0.10);
+  --accent-border:   rgba(106, 137, 167, 0.28);
+  --accent-text:     #3d6a8a;
+
+  /* secondary / highlight — sky blue */
+  --highlight:       #88BDF2;
+  --highlight-subtle:rgba(136, 189, 242, 0.12);
+  --highlight-border:rgba(136, 189, 242, 0.30);
+  --highlight-text:  #4a8fd4;
+
+  /* frost — softest tier */
+  --frost:           #BDDDFC;
+  --frost-subtle:    rgba(189, 221, 252, 0.15);
+  --frost-border:    rgba(189, 221, 252, 0.35);
+
+  /* semantic */
+  --success:         #2d9d78;
+  --error:           #d94052;
+  --warning:         #c4841d;
+  --info:            #4a7a9b;
+  --success-subtle:  rgba(45, 157, 120, 0.10);
+  --error-subtle:    rgba(217, 64, 82, 0.08);
+  --warning-subtle:  rgba(196, 132, 29, 0.10);
+  --info-subtle:     rgba(74, 122, 155, 0.10);
+
+  /* focus ring */
+  --focus:           rgba(136, 189, 242, 0.50);
+
+  /* react-toastify overrides */
+  --toastify-color-info:    var(--accent);
+  --toastify-color-success: var(--success);
+  --toastify-color-warning: var(--warning);
+  --toastify-color-error:   var(--error);
+  --toastify-color-progress-info:    var(--highlight);
+  --toastify-color-progress-success: var(--success);
+  --toastify-color-progress-warning: var(--warning);
+  --toastify-color-progress-error:   var(--error);
+}
+
+.dark {
+  /* ── Dark mode tokens ── */
+  --bg:              #0f1923;
+  --surface:         #172330;
+  --surface-muted:   #1e2d3d;
+  --surface-subtle:  #243546;
+  --border:          rgba(106, 137, 167, 0.22);
+  --border-muted:    rgba(106, 137, 167, 0.12);
+  --text-primary:    #e8eef4;
+  --text-secondary:  #9db4c9;
+  --text-muted:      #6A89A7;
+
+  /* primary accent — sky blue (brighter in dark mode for contrast) */
+  --accent:          #88BDF2;
+  --accent-hover:    #6aaae8;
+  --accent-strong:   #5a9ad8;
+  --accent-subtle:   rgba(136, 189, 242, 0.12);
+  --accent-border:   rgba(136, 189, 242, 0.30);
+  --accent-text:     #BDDDFC;
+
+  /* secondary / highlight */
+  --highlight:       #88BDF2;
+  --highlight-subtle:rgba(136, 189, 242, 0.10);
+  --highlight-border:rgba(136, 189, 242, 0.25);
+  --highlight-text:  #BDDDFC;
+
+  /* frost */
+  --frost:           #BDDDFC;
+  --frost-subtle:    rgba(189, 221, 252, 0.08);
+  --frost-border:    rgba(189, 221, 252, 0.20);
+
+  /* semantic */
+  --success:         #4dd4a8;
+  --error:           #f87185;
+  --warning:         #fbbf24;
+  --info:            #88BDF2;
+  --success-subtle:  rgba(77, 212, 168, 0.12);
+  --error-subtle:    rgba(248, 113, 133, 0.10);
+  --warning-subtle:  rgba(251, 191, 36, 0.12);
+  --info-subtle:     rgba(136, 189, 242, 0.10);
+
+  --focus:           rgba(136, 189, 242, 0.45);
+}
+
+/* ─── Base ─────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* ─── Token utility classes ─────────────────────────────────────── */
+
+.t-bg              { background-color: var(--bg); }
+.t-surface         { background-color: var(--surface); }
+.t-surface-muted   { background-color: var(--surface-muted); }
+.t-surface-subtle  { background-color: var(--surface-subtle); }
+.t-border          { border-color: var(--border); }
+.t-border-muted    { border-color: var(--border-muted); }
+.t-text            { color: var(--text-primary); }
+.t-text-secondary  { color: var(--text-secondary); }
+.t-text-muted      { color: var(--text-muted); }
+.t-accent          { color: var(--accent); }
+.t-accent-bg       { background-color: var(--accent); }
+.t-accent-strong   { color: var(--accent-strong); }
+.t-accent-subtle   { background-color: var(--accent-subtle); }
+.t-accent-text     { color: var(--accent-text); }
+.t-highlight       { color: var(--highlight); }
+.t-highlight-bg    { background-color: var(--highlight); }
+.t-frost           { color: var(--frost); }
+.t-frost-bg        { background-color: var(--frost); }
+.t-success         { color: var(--success); }
+.t-error           { color: var(--error); }
+.t-warning         { color: var(--warning); }
+.t-info            { color: var(--info); }
+
+/* ─── Scrollbar ─────────────────────────────────────────────────── */
+
+::-webkit-scrollbar           { width: 6px; height: 6px; }
+::-webkit-scrollbar-track     { background: transparent; }
+::-webkit-scrollbar-thumb     { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-border); }
+
+/* ─── Focus ring ─────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ─── Toast (theme-aware, design tokens) ─────────────────────────── */
+
+.Toastify__toast {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+}
+.Toastify__toast--success  { border-color: var(--success) !important; }
+.Toastify__toast--error    { border-color: var(--error)   !important; }
+.Toastify__toast--warning  { border-color: var(--warning) !important; }
+.Toastify__toast--info     { border-color: var(--accent) !important; }
+.Toastify__progress-bar   { background: var(--highlight) !important; }
+.Toastify__close-button   { color: var(--text-muted) !important; }
+
+/* ─── Glassmorphism Card ────────────────────────────────────────── */
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 213, 224, 0.50);
+  box-shadow: 0 8px 32px 0 rgba(56, 73, 89, 0.06);
+}
+.dark .glass-card {
+  background: rgba(23, 35, 48, 0.82);
+  border: 1px solid rgba(106, 137, 167, 0.18);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* ─── TipTap / ProseMirror ──────────────────────────────────────── */
+
+.ProseMirror { outline: none; }
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-muted);
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror h1 { font-size: 1.9em; font-weight: 700; margin: 0.6em 0; }
+.ProseMirror h2 { font-size: 1.5em; font-weight: 700; margin: 0.75em 0; }
+.ProseMirror h3 { font-size: 1.2em; font-weight: 600; margin: 0.85em 0; }
+.ProseMirror p  { margin: 0.8em 0; }
+
+.ProseMirror ul, .ProseMirror ol {
+  padding-left: 1.8em;
+  margin: 0.8em 0;
+}
+.ProseMirror ul  { list-style-type: disc; }
+.ProseMirror ol  { list-style-type: decimal; }
+.ProseMirror li  { margin: 0.4em 0; }
+
+.ProseMirror blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1em;
+  margin: 1em 0;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.ProseMirror code {
+  background-color: var(--surface-muted);
+  padding: 0.18em 0.42em;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.88em;
+  color: var(--accent-text);
+}
+
+.ProseMirror pre {
+  background-color: var(--surface-muted);
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+  border: 1px solid var(--border);
+}
+.ProseMirror pre code {
+  background-color: transparent;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+.ProseMirror img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  margin: 1em 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.ProseMirror a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ProseMirror a:hover { opacity: 0.8; }
+
+/* ═══════════════════════════════════════════════════════════════
+   BACKWARD-COMPAT LAYER
+   Remaps every legacy hardcoded class to the new Stormy Morning tokens.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Old surface backgrounds ────────────────────────────────── */
+.bg-\[\#0b0c10\],
+.bg-\[\#0a1a1a\] { background-color: var(--bg) !important; }
+
+.bg-\[\#13151c\],
+.bg-\[\#0f2626\] { background-color: var(--surface) !important; }
+
+.bg-\[\#1a1d27\],
+.bg-\[\#1a3d3d\],
+.bg-\[\#102626\],
+.bg-\[\#0c1724\],
+.bg-\[\#102236\] { background-color: var(--surface-muted) !important; }
+
+.bg-\[\#050d16\],
+.bg-\[\#07131a\] { background-color: var(--surface-subtle) !important; }
+
+.bg-\[\#04111b\],
+.bg-\[\#020d16\] { background-color: var(--bg) !important; }
+
+/* ─── Old border colors ───────────────────────────────────────── */
+.border-\[\#272b38\],
+.border-\[\#1a3d3d\],
+.border-\[\#102236\],
+.border-\[\#2a3f56\],
+.border-\[\#1e3a4a\] { border-color: var(--border) !important; }
+
+/* ─── Old hover backgrounds ──────────────────────────────────── */
+.hover\:bg-\[\#0f2626\]:hover,
+.hover\:bg-\[\#13151c\]:hover,
+.hover\:bg-\[\#1a3d3d\]:hover,
+.hover\:bg-\[\#102626\]:hover { background-color: var(--surface-muted) !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   CYAN → STORMY BLUE MIGRATION
+   All legacy cyan classes remapped to the storm accent system.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Cyan text → accent ──────────────────────────────────────── */
+.text-cyan-200,
+.text-cyan-300,
+.text-cyan-400,
+.text-cyan-500,
+.text-cyan-600 { color: var(--accent) !important; }
+
+/* ─── Cyan solid backgrounds → accent ─────────────────────────── */
+.bg-cyan-400,
+.bg-cyan-500 {
+  background-color: var(--accent) !important;
+  color: white !important;
+}
+
+/* ─── Cyan transparent backgrounds → accent subtle ────────────── */
+.bg-cyan-400\/5,
+.bg-cyan-400\/10,
+.bg-cyan-400\/20,
+.bg-cyan-500\/5,
+.bg-cyan-500\/10,
+.bg-cyan-500\/20 { background-color: var(--accent-subtle) !important; }
+
+/* ─── Cyan borders → accent border ────────────────────────────── */
+.border-cyan-400,
+.border-cyan-500 { border-color: var(--accent-border) !important; }
+
+.border-cyan-400\/20,
+.border-cyan-400\/25,
+.border-cyan-400\/30,
+.border-cyan-400\/40,
+.border-cyan-400\/50,
+.border-cyan-500\/20,
+.border-cyan-500\/30 { border-color: var(--accent-border) !important; }
+
+/* ─── Cyan hover states → accent ──────────────────────────────── */
+.hover\:bg-cyan-400:hover,
+.hover\:bg-cyan-500:hover {
+  background-color: var(--accent-hover) !important;
+  color: white !important;
+}
+
+.hover\:text-cyan-300:hover,
+.hover\:text-cyan-400:hover { color: var(--accent-hover) !important; }
+
+.hover\:border-cyan-400:hover,
+.hover\:border-cyan-500:hover { border-color: var(--accent) !important; }
+
+.hover\:border-cyan-400\/25:hover,
+.hover\:border-cyan-400\/30:hover,
+.hover\:border-cyan-400\/50:hover,
+.hover\:border-cyan-500\/30:hover { border-color: var(--accent-border) !important; }
+
+/* ─── Cyan focus states ��� accent ──────────────────────────────── */
+.focus\:border-cyan-400:focus,
+.focus\:border-cyan-400\/40:focus,
+.focus\:border-cyan-400\/50:focus,
+.focus\:border-cyan-500:focus { border-color: var(--accent) !important; }
+
+.focus\:ring-cyan-400:focus,
+.focus\:ring-cyan-500:focus { --tw-ring-color: var(--accent) !important; }
+
+/* ─── Cyan gradients → stormy ─────────────────────────────────── */
+.from-cyan-400\/10,
+.from-cyan-500\/10,
+.from-cyan-500\/20 { --tw-gradient-from: var(--accent-subtle) !important; }
+
+.to-cyan-400\/10,
+.to-cyan-500\/10,
+.to-cyan-500\/20 { --tw-gradient-to: var(--frost-subtle) !important; }
+
+.to-blue-500\/20 { --tw-gradient-to: var(--frost-subtle) !important; }
+
+/* ─── Cyan indicator dots → accent ────────────────────────────── */
+.bg-cyan-400.rounded-full,
+.bg-cyan-400.animate-pulse,
+.bg-cyan-500.rounded-full,
+.bg-cyan-500.animate-pulse { background-color: var(--accent) !important; }
+
+/* ─── Cyan file input → accent ────────────────────────────────── */
+.file\:bg-cyan-400::file-selector-button,
+.file\:bg-cyan-500::file-selector-button {
+  background-color: var(--accent) !important;
+  color: white !important;
+  border: none;
+}
+.file\:text-slate-900::file-selector-button { color: white !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   VIOLET / BLUE → STORMY BLUE MIGRATION
+   Legacy violet/blue classes remap to stormy palette.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Violet text → accent ────────────────────────────────────── */
+:root:not(.dark) .text-violet-400  { color: #4a7a9b !important; }
+:root:not(.dark) .text-violet-500  { color: #3d6a8a !important; }
+:root:not(.dark) .text-purple-400  { color: #4a7a9b !important; }
+.dark .text-violet-400             { color: #88BDF2 !important; }
+.dark .text-violet-500             { color: #6aaae8 !important; }
+.dark .text-purple-400             { color: #88BDF2 !important; }
+
+/* ─── Blue text → accent ──────────────────────────────────────── */
+:root:not(.dark) .text-blue-400  { color: #4a7a9b !important; }
+:root:not(.dark) .text-blue-500  { color: #3d6a8a !important; }
+.dark .text-blue-400             { color: #88BDF2 !important; }
+.dark .text-blue-500             { color: #6aaae8 !important; }
+
+/* ─── Blue transparent backgrounds → accent subtle ────────────── */
+.bg-blue-400\/10 { background-color: var(--accent-subtle) !important; }
+.bg-blue-500\/10 { background-color: var(--accent-subtle) !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   LEGACY TEXT OVERRIDES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Legacy gray text in dark mode ─────────────────────────── */
+.dark .text-gray-100 { color: var(--text-primary) !important; }
+.dark .text-gray-200 { color: var(--text-primary) !important; }
+.dark .text-gray-300 { color: var(--text-secondary) !important; }
+.dark .text-gray-400 { color: var(--text-secondary) !important; }
+.dark .text-gray-500 { color: var(--text-muted) !important; }
+
+/* ─── text-white safety net in light mode ──────────────────── */
+:root:not(.dark) .bg-\[\#0f2626\] .text-white,
+:root:not(.dark) .bg-\[\#0a1a1a\] .text-white,
+:root:not(.dark) .bg-\[\#1a3d3d\] .text-white,
+:root:not(.dark) .bg-\[\#13151c\] .text-white {
+  color: var(--text-primary) !important;
+}
+
+/* ─── Sidebar / nav ─────────────────────────────────────────── */
+[data-sidebar] { background-color: var(--surface); border-color: var(--border); }
+
+/* ═══════════════════════════════════════════════════════════════
+   LIGHT-MODE CONTRAST FIX — Tailwind -400 classes
+   
+   -400 shades lack WCAG AA on white backgrounds.
+   Bumped to proper contrast in light mode.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Green (success, paid, published, healthy) ─────────────── */
+:root:not(.dark) .text-green-400          { color: #2d9d78 !important; }
+:root:not(.dark) .bg-green-400            { background-color: #2d9d78 !important; }
+:root:not(.dark) .bg-green-400.animate-pulse { background-color: #2d9d78 !important; }
+
+/* ─── Red (errors, alerts, server offline) ──────────────────── */
+:root:not(.dark) .text-red-400            { color: #d94052 !important; }
+:root:not(.dark) .text-red-500            { color: #c4384a !important; }
+:root:not(.dark) .bg-red-400              { background-color: #d94052 !important; }
+:root:not(.dark) .bg-red-500              { background-color: #d94052 !important; }
+:root:not(.dark) .bg-red-500\/20          { background-color: rgba(217, 64, 82, 0.12) !important; }
+:root:not(.dark) .bg-red-400\/10          { background-color: rgba(217, 64, 82, 0.08) !important; }
+:root:not(.dark) .border-red-500\/50      { border-color: rgba(217, 64, 82, 0.40) !important; }
+
+/* ─── Yellow / Amber (pending, warnings) ────────────────────── */
+:root:not(.dark) .text-yellow-400         { color: #c4841d !important; }
+:root:not(.dark) .text-amber-400          { color: #c4841d !important; }
+
+/* ─── Orange (hiring, comments, active jobs) ─────────────────── */
+:root:not(.dark) .text-orange-400         { color: #b8610c !important; }
+:root:not(.dark) .bg-orange-400\/10       { background-color: rgba(184, 97, 12, 0.08) !important; }
+
+/* ─── Pink (subscribers) ────────────────────────────────────── */
+:root:not(.dark) .text-pink-400           { color: #c22768 !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   LIGHT-MODE CARD DEFINITION
+   Subtle shadow lift on white backgrounds — stormy morning feel.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root:not(.dark) .rounded-2xl {
+  box-shadow:
+    0 1px 3px rgba(56, 73, 89, 0.05),
+    0 1px 2px rgba(56, 73, 89, 0.07);
+}
+:root:not(.dark) .rounded-2xl:hover {
+  box-shadow:
+    0 10px 28px rgba(56, 73, 89, 0.08),
+    0 4px 10px rgba(56, 73, 89, 0.05);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DARK-MODE AMBIENT GLOW
+   Subtle blue atmospheric glow on card hover — stormy aurora.
+   ═══════════════════════════════════════════════════════════════ */
+
+.dark .rounded-2xl {
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  transition: box-shadow 0.3s ease;
+}
+.dark .rounded-2xl:hover {
+  box-shadow:
+    0 8px 30px rgba(136, 189, 242, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.3);
+}
