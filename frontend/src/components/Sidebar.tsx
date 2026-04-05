@@ -9,14 +9,18 @@ import {
   DollarSign, LifeBuoy, Bell, UserCircle, LogOut,
   BarChart2, CalendarDays, PanelLeftClose, PanelLeftOpen,
   UserCheck, ClipboardList, Search, ShieldCheck,
-  Sparkles, ChevronRight, Dot,
+  Sparkles, ChevronRight, Dot, Receipt, Repeat,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useSupportCounts } from '@/hooks/useSupportCounts';
 import { useUserProfile, hasRole, hasPermission, clearProfileCache } from '@/hooks/useUserProfile';
+import { ROLE_HOME_BY_PRIORITY, getUserRoles } from '@/lib/roleUtils';
 import ThemeToggle from './ThemeToggle';
+
+/** Module roles that have dedicated sidebar menus (excludes admin/super_admin). */
+const MODULE_ROLES = ['hr', 'content_creator', 'seo_manager', 'finance_manager', 'sales', 'support_executive'] as const;
 
 /* ────────────────────────────────────────────────────────────────
    Types & Menu Definitions
@@ -41,12 +45,13 @@ const adminMenuItems = (unreadCount: number, ticketsCount = 0): MenuItem[] => [
   },
   {
     label: 'Admin Module', icon: <ShieldCheck size={17} />,
-    requiredPermission: 'users.read', group: 'Modules',
+    requiredPermission: 'users.delete',
+    group: 'Modules',
     children: [
-      { label: 'Admin Overview',    icon: null, href: '/dashboard/admin', match: 'exact' },
-      { label: 'Users & Roles',     icon: null, href: '/dashboard/users' },
+      { label: 'Admin Overview', icon: null, href: '/dashboard/admin', match: 'exact' },
+      { label: 'Users & Roles', icon: null, href: '/dashboard/users' },
       { label: 'Permission Matrix', icon: null, href: '/dashboard/roles-permissions' },
-      { label: 'Audit Logs',        icon: null, href: '/dashboard/audit-logs' },
+      { label: 'Audit Logs', icon: null, href: '/dashboard/audit-logs' },
     ],
   },
   {
@@ -54,23 +59,22 @@ const adminMenuItems = (unreadCount: number, ticketsCount = 0): MenuItem[] => [
     requiredPermission: 'cms.read', group: 'Modules',
     children: [
       { label: 'Content Overview', icon: null, href: '/dashboard/content', match: 'exact' },
-      { label: 'Posts',      icon: null, href: '/dashboard/posts' },
-      { label: 'Pages',      icon: null, href: '/dashboard/pages' },
+      { label: 'Posts', icon: null, href: '/dashboard/posts' },
       { label: 'Categories', icon: null, href: '/dashboard/categories' },
-      { label: 'Tags',       icon: null, href: '/dashboard/tags' },
-      { label: 'Comments',   icon: null, href: '/dashboard/comments' },
-      { label: 'FAQ',        icon: null, href: '/dashboard/faq' },
+      { label: 'Tags', icon: null, href: '/dashboard/tags' },
+      { label: 'Comments', icon: null, href: '/dashboard/comments' },
+      { label: 'FAQ', icon: null, href: '/dashboard/faq' },
     ],
   },
   {
     label: 'HR Module', icon: <UserCheck size={17} />,
     requiredPermission: 'users.read', group: 'Modules',
     children: [
-      { label: 'HR Overview',     icon: null, href: '/dashboard/hr', match: 'exact' },
-      { label: 'Employees',       icon: null, href: '/dashboard/hr/employees' },
-      { label: 'Attendance',      icon: null, href: '/dashboard/hr/attendance' },
-      { label: 'Job Listings',    icon: null, href: '/dashboard/hr/recruitment/jobs' },
-      { label: 'Applications',    icon: null, href: '/dashboard/hr/recruitment/applications' },
+      { label: 'HR Overview', icon: null, href: '/dashboard/hr', match: 'exact' },
+      { label: 'Employees', icon: null, href: '/dashboard/hr/employees' },
+      { label: 'Attendance', icon: null, href: '/dashboard/hr/attendance' },
+      { label: 'Job Listings', icon: null, href: '/dashboard/hr/recruitment/jobs' },
+      { label: 'Applications', icon: null, href: '/dashboard/hr/recruitment/applications' },
       { label: 'Resume Database', icon: null, href: '/dashboard/hr/recruitment/resumes' },
     ],
   },
@@ -78,31 +82,37 @@ const adminMenuItems = (unreadCount: number, ticketsCount = 0): MenuItem[] => [
     label: 'Sales Module', icon: <Users size={17} />,
     requiredPermission: 'crm.write', group: 'Modules',
     children: [
-      { label: 'Sales Overview',   icon: null, href: '/dashboard/sales', match: 'exact' },
-      { label: 'CRM Leads',        icon: null, href: '/crm/leads' },
+      { label: 'Sales Overview', icon: null, href: '/dashboard/sales', match: 'exact' },
+      { label: 'CRM Leads', icon: null, href: '/dashboard/sales/leads' },
       { label: 'Form Submissions', icon: null, href: '/dashboard/form-submissions' },
-      { label: 'Subscribers',      icon: null, href: '/dashboard/subscribers' },
+      { label: 'Subscribers', icon: null, href: '/dashboard/subscribers' },
     ],
   },
   {
-    label: 'CRM Portal', icon: <Users size={17} />,
-    requiredPermission: 'crm.write', group: 'Modules',
+    label: 'SEO Module', icon: <Search size={17} />,
+    requiredPermission: 'seo.read', group: 'Modules',
     children: [
-      { label: 'Leads',            icon: null, href: '/crm/leads' },
-      { label: 'Form Submissions', icon: null, href: '/dashboard/form-submissions' },
-      { label: 'Subscribers',      icon: null, href: '/dashboard/subscribers' },
+      { label: 'SEO Overview', icon: null, href: '/dashboard/seo', match: 'exact' },
+      { label: 'SEO Pages', icon: null, href: '/dashboard/seo/pages' },
+      { label: 'SEO Audit', icon: null, href: '/dashboard/seo/audit' },
+      { label: 'Redirects', icon: null, href: '/dashboard/seo/redirects' },
+      { label: 'Keywords', icon: null, href: '/dashboard/seo/keywords' },
+      { label: 'Sitemap', icon: null, href: '/dashboard/seo/sitemap' },
     ],
   },
   {
-    label: 'Finance', icon: <DollarSign size={17} />,
-    requiredPermission: 'finance.write', group: 'Operations',
+    label: 'Finance Module', icon: <DollarSign size={17} />,
+    requiredPermission: 'finance.write', group: 'Modules',
     children: [
+      { label: 'Finance Overview', icon: null, href: '/dashboard/finance', match: 'exact' },
       { label: 'Invoices', icon: null, href: '/dashboard/invoices' },
+      { label: 'Expenses', icon: null, href: '/dashboard/finance/expenses' },
+      { label: 'Reports', icon: null, href: '/dashboard/finance/reports' },
     ],
   },
   {
-    label: 'Support', icon: <LifeBuoy size={17} />,
-    requiredPermission: 'tickets.update', group: 'Operations',
+    label: 'Support Module', icon: <LifeBuoy size={17} />,
+    requiredPermission: 'tickets.update', group: 'Modules',
     badge: ticketsCount > 0 ? ticketsCount : undefined,
     children: [
       { label: 'Tickets', icon: null, href: '/dashboard/tickets', badge: ticketsCount > 0 ? ticketsCount : undefined },
@@ -120,7 +130,7 @@ const adminMenuItems = (unreadCount: number, ticketsCount = 0): MenuItem[] => [
     label: 'Planning', icon: <CalendarDays size={17} />,
     group: 'Insights',
     children: [
-      { label: 'Todo Tasks',    icon: null, href: '/dashboard/tasks' },
+      { label: 'Todo Tasks', icon: null, href: '/dashboard/tasks' },
       { label: 'Team Calendar', icon: null, href: '/dashboard/calendar' },
     ],
   },
@@ -134,7 +144,7 @@ const adminMenuItems = (unreadCount: number, ticketsCount = 0): MenuItem[] => [
     group: 'System',
     children: [
       { label: 'My Profile', icon: null, href: '/dashboard/profile' },
-      { label: 'Settings',   icon: null, href: '/dashboard/settings' },
+      { label: 'Settings', icon: null, href: '/dashboard/settings' },
     ],
   },
 ];
@@ -146,8 +156,8 @@ const hrMenuItems = (unreadCount: number): MenuItem[] => [
   {
     label: 'Recruitment', icon: <Search size={17} />, group: 'Manage',
     children: [
-      { label: 'Job Listings',    icon: null, href: '/dashboard/hr/recruitment/jobs' },
-      { label: 'Applications',    icon: null, href: '/dashboard/hr/recruitment/applications' },
+      { label: 'Job Listings', icon: null, href: '/dashboard/hr/recruitment/jobs' },
+      { label: 'Applications', icon: null, href: '/dashboard/hr/recruitment/applications' },
       { label: 'Resume Database', icon: null, href: '/dashboard/hr/recruitment/resumes' },
     ],
   },
@@ -168,12 +178,11 @@ const contentMenuItems = (unreadCount: number): MenuItem[] => [
   {
     label: 'Content Module', icon: <FileText size={17} />, group: 'Content',
     children: [
-      { label: 'Posts',      icon: null, href: '/dashboard/posts' },
-      { label: 'Pages',      icon: null, href: '/dashboard/pages' },
+      { label: 'Posts', icon: null, href: '/dashboard/posts' },
       { label: 'Categories', icon: null, href: '/dashboard/categories' },
-      { label: 'Tags',       icon: null, href: '/dashboard/tags' },
-      { label: 'Comments',   icon: null, href: '/dashboard/comments' },
-      { label: 'FAQ',        icon: null, href: '/dashboard/faq' },
+      { label: 'Tags', icon: null, href: '/dashboard/tags' },
+      { label: 'Comments', icon: null, href: '/dashboard/comments' },
+      { label: 'FAQ', icon: null, href: '/dashboard/faq' },
     ],
   },
   {
@@ -188,20 +197,276 @@ const contentMenuItems = (unreadCount: number): MenuItem[] => [
   },
 ];
 
+const financeMenuItems = (unreadCount: number): MenuItem[] => [
+  { label: 'Finance Overview', icon: <LayoutGrid size={17} />, href: '/dashboard/finance', match: 'exact', group: 'Main' },
+  { label: 'Invoices', icon: <DollarSign size={17} />, href: '/dashboard/invoices', group: 'Finance' },
+  { label: 'Expenses', icon: <Receipt size={17} />, href: '/dashboard/finance/expenses', group: 'Finance' },
+  { label: 'Reports', icon: <BarChart2 size={17} />, href: '/dashboard/finance/reports', group: 'Finance' },
+  {
+    label: 'Notifications', icon: <Bell size={17} />, href: '/dashboard/notifications',
+    badge: unreadCount > 0 ? unreadCount : undefined, group: 'System',
+  },
+  {
+    label: 'Account', icon: <UserCircle size={17} />, group: 'System',
+    children: [
+      { label: 'My Profile', icon: null, href: '/dashboard/profile' },
+    ],
+  },
+];
+
+const seoMenuItems = (unreadCount: number): MenuItem[] => [
+  { label: 'SEO Overview', icon: <LayoutGrid size={17} />, href: '/dashboard/seo', match: 'exact', group: 'Main' },
+  { label: 'SEO Pages', icon: <FileText size={17} />, href: '/dashboard/seo/pages', group: 'SEO' },
+  { label: 'SEO Audit', icon: <ShieldCheck size={17} />, href: '/dashboard/seo/audit', group: 'SEO' },
+  { label: 'Redirects', icon: <Repeat size={17} />, href: '/dashboard/seo/redirects', group: 'SEO' },
+  { label: 'Keywords', icon: <Search size={17} />, href: '/dashboard/seo/keywords', group: 'SEO' },
+  { label: 'Sitemap', icon: <BarChart2 size={17} />, href: '/dashboard/seo/sitemap', group: 'SEO' },
+  {
+    label: 'Notifications', icon: <Bell size={17} />, href: '/dashboard/notifications',
+    badge: unreadCount > 0 ? unreadCount : undefined, group: 'System',
+  },
+  {
+    label: 'Account', icon: <UserCircle size={17} />, group: 'System',
+    children: [
+      { label: 'My Profile', icon: null, href: '/dashboard/profile' },
+    ],
+  },
+];
+
+const salesMenuItems = (unreadCount: number): MenuItem[] => [
+  { label: 'Sales Overview', icon: <LayoutGrid size={17} />, href: '/dashboard/sales', match: 'exact', group: 'Main' },
+  { label: 'CRM Leads', icon: <Users size={17} />, href: '/dashboard/sales/leads', group: 'Sales' },
+  { label: 'Form Submissions', icon: <FileText size={17} />, href: '/dashboard/form-submissions', group: 'Sales' },
+  { label: 'Subscribers', icon: <Users size={17} />, href: '/dashboard/subscribers', group: 'Sales' },
+  {
+    label: 'Notifications', icon: <Bell size={17} />, href: '/dashboard/notifications',
+    badge: unreadCount > 0 ? unreadCount : undefined, group: 'System',
+  },
+  {
+    label: 'Account', icon: <UserCircle size={17} />, group: 'System',
+    children: [
+      { label: 'My Profile', icon: null, href: '/dashboard/profile' },
+    ],
+  },
+];
+
+const supportMenuItems = (unreadCount: number, ticketsCount = 0): MenuItem[] => [
+  { label: 'Support Overview', icon: <LayoutGrid size={17} />, href: '/dashboard/support', match: 'exact', group: 'Main' },
+  { label: 'Tickets', icon: <LifeBuoy size={17} />, href: '/dashboard/tickets', group: 'Support', badge: ticketsCount > 0 ? ticketsCount : undefined },
+  { label: 'Chatbot', icon: <Sparkles size={17} />, href: '/dashboard/chatbot', group: 'Support' },
+  {
+    label: 'Notifications', icon: <Bell size={17} />, href: '/dashboard/notifications',
+    badge: unreadCount > 0 ? unreadCount : undefined, group: 'System',
+  },
+  {
+    label: 'Account', icon: <UserCircle size={17} />, group: 'System',
+    children: [
+      { label: 'My Profile', icon: null, href: '/dashboard/profile' },
+    ],
+  },
+];
+
+/* Module section definitions for combined multi-role menu. Order follows ROLE_HOME_BY_PRIORITY. */
+const MODULE_SECTIONS: Record<string, { label: string; icon: React.ReactNode; children: (Omit<MenuItem, 'children' | 'group'> & { badge?: number })[] }> = {
+  hr: {
+    label: 'HR Module',
+    icon: <UserCheck size={17} />,
+    children: [
+      { label: 'HR Overview', icon: null, href: '/dashboard/hr', match: 'exact' },
+      { label: 'Employees', icon: null, href: '/dashboard/hr/employees' },
+      { label: 'Attendance', icon: null, href: '/dashboard/hr/attendance' },
+      { label: 'Job Listings', icon: null, href: '/dashboard/hr/recruitment/jobs' },
+      { label: 'Applications', icon: null, href: '/dashboard/hr/recruitment/applications' },
+      { label: 'Resume Database', icon: null, href: '/dashboard/hr/recruitment/resumes' },
+    ],
+  },
+  content_creator: {
+    label: 'Content Module',
+    icon: <FileText size={17} />,
+    children: [
+      { label: 'Content Overview', icon: null, href: '/dashboard/content', match: 'exact' },
+      { label: 'Posts', icon: null, href: '/dashboard/posts' },
+      { label: 'Categories', icon: null, href: '/dashboard/categories' },
+      { label: 'Tags', icon: null, href: '/dashboard/tags' },
+      { label: 'Comments', icon: null, href: '/dashboard/comments' },
+      { label: 'FAQ', icon: null, href: '/dashboard/faq' },
+    ],
+  },
+  seo_manager: {
+    label: 'SEO Module',
+    icon: <Search size={17} />,
+    children: [
+      { label: 'SEO Overview', icon: null, href: '/dashboard/seo', match: 'exact' },
+      { label: 'SEO Pages', icon: null, href: '/dashboard/seo/pages' },
+      { label: 'SEO Audit', icon: null, href: '/dashboard/seo/audit' },
+      { label: 'Redirects', icon: null, href: '/dashboard/seo/redirects' },
+      { label: 'Keywords', icon: null, href: '/dashboard/seo/keywords' },
+      { label: 'Sitemap', icon: null, href: '/dashboard/seo/sitemap' },
+    ],
+  },
+  finance_manager: {
+    label: 'Finance Module',
+    icon: <DollarSign size={17} />,
+    children: [
+      { label: 'Finance Overview', icon: null, href: '/dashboard/finance', match: 'exact' },
+      { label: 'Invoices', icon: null, href: '/dashboard/invoices' },
+      { label: 'Expenses', icon: null, href: '/dashboard/finance/expenses' },
+      { label: 'Reports', icon: null, href: '/dashboard/finance/reports' },
+    ],
+  },
+  sales: {
+    label: 'Sales Module',
+    icon: <Users size={17} />,
+    children: [
+      { label: 'Sales Overview', icon: null, href: '/dashboard/sales', match: 'exact' },
+      { label: 'CRM Leads', icon: null, href: '/dashboard/sales/leads' },
+      { label: 'Form Submissions', icon: null, href: '/dashboard/form-submissions' },
+      { label: 'Subscribers', icon: null, href: '/dashboard/subscribers' },
+    ],
+  },
+  support_executive: {
+    label: 'Support Module',
+    icon: <LifeBuoy size={17} />,
+    children: [
+      { label: 'Support Overview', icon: null, href: '/dashboard/support', match: 'exact' },
+      { label: 'Tickets', icon: null, href: '/dashboard/tickets' },
+      { label: 'Chatbot', icon: null, href: '/dashboard/chatbot' },
+    ],
+  },
+};
+
+/** Build combined menu for users with 2+ module roles. Includes all roles regardless of permissions. */
+function getCombinedMenuItemsForRoles(roles: string[], unreadCount: number): MenuItem[] {
+  const moduleRoles = roles.filter((r) => MODULE_ROLES.includes(r as (typeof MODULE_ROLES)[number]));
+  if (moduleRoles.length === 0) return [];
+
+  const homeEntry = ROLE_HOME_BY_PRIORITY.find((e) => moduleRoles.includes(e.role));
+  const homePath = homeEntry?.home ?? '/dashboard/profile';
+  const homeLabel = homeEntry?.role === 'hr' ? 'HR Overview'
+    : homeEntry?.role === 'content_creator' ? 'Content Overview'
+      : homeEntry?.role === 'seo_manager' ? 'SEO Overview'
+        : homeEntry?.role === 'finance_manager' ? 'Finance Overview'
+          : homeEntry?.role === 'sales' ? 'Sales Overview'
+            : homeEntry?.role === 'support_executive' ? 'Support Overview'
+              : 'Overview';
+
+  const items: MenuItem[] = [
+    { label: homeLabel, icon: <LayoutGrid size={17} />, href: homePath, match: 'exact', group: 'Main' },
+  ];
+
+  for (const entry of ROLE_HOME_BY_PRIORITY) {
+    if (!moduleRoles.includes(entry.role)) continue;
+    const section = MODULE_SECTIONS[entry.role];
+    if (!section) continue;
+    items.push({
+      label: section.label,
+      icon: section.icon,
+      group: section.label,
+      children: section.children,
+    });
+  }
+
+  items.push(
+    {
+      label: 'Notifications',
+      icon: <Bell size={17} />,
+      href: '/dashboard/notifications',
+      badge: unreadCount > 0 ? unreadCount : undefined,
+      group: 'System',
+    },
+    {
+      label: 'Account',
+      icon: <UserCircle size={17} />,
+      group: 'System',
+      children: [{ label: 'My Profile', icon: null, href: '/dashboard/profile' }],
+    },
+  );
+
+  return items;
+}
+
 /* ────────────────────────────────────────────────────────────────
    Helpers
    ──────────────────────────────────────────────────────────────── */
 
-const getActiveSections = (pathname: string, isHR = false, isContent = false): string[] => {
+/** Path→section map for combined multi-role menu. Built from module roles. */
+function getActiveSectionsForCombined(pathname: string, moduleRoles: string[]): string[] {
+  const systemMap: [string, string][] = [
+    ['/dashboard/notifications', 'Notifications'],
+    ['/dashboard/profile', 'Account'],
+  ];
+  for (const [prefix, section] of systemMap) {
+    if (pathname === prefix || pathname.startsWith(prefix + '/')) return [section];
+  }
+  for (const role of moduleRoles) {
+    const section = MODULE_SECTIONS[role];
+    if (!section) continue;
+    const label = section.label;
+    for (const child of section.children) {
+      if (child.href && (pathname === child.href || pathname.startsWith(child.href + '/'))) {
+        return [label];
+      }
+    }
+  }
+  return [];
+}
+
+const getActiveSections = (pathname: string, isHR = false, isContent = false, isFinance = false, isSales = false, isSupport = false, moduleRoles: string[] = []): string[] => {
+  if (moduleRoles.length >= 2) {
+    return getActiveSectionsForCombined(pathname, moduleRoles);
+  }
+  if (isSupport) {
+    const supportMap: [string, string][] = [
+      ['/dashboard/tickets', 'Tickets'],
+      ['/dashboard/chatbot', 'Chatbot'],
+      ['/dashboard/support', 'Support Overview'],
+      ['/dashboard/notifications', 'Notifications'],
+      ['/dashboard/profile', 'Account'],
+    ];
+    for (const [prefix, section] of supportMap) {
+      if (pathname === prefix || pathname.startsWith(prefix + '/')) return [section];
+    }
+    return [];
+  }
+  if (isSales) {
+    const salesMap: [string, string][] = [
+      ['/dashboard/sales/leads', 'CRM Leads'],
+      ['/dashboard/form-submissions', 'Form Submissions'],
+      ['/dashboard/subscribers', 'Subscribers'],
+      ['/dashboard/sales', 'Sales Overview'],
+      ['/dashboard/notifications', 'Notifications'],
+      ['/dashboard/profile', 'Account'],
+    ];
+    for (const [prefix, section] of salesMap) {
+      if (pathname === prefix || pathname.startsWith(prefix + '/')) return [section];
+    }
+    return [];
+  }
+
+  if (isFinance) {
+    const financeMap: [string, string][] = [
+      ['/dashboard/finance/expenses', 'Expenses'],
+      ['/dashboard/finance/reports', 'Reports'],
+      ['/dashboard/finance', 'Finance Overview'],
+      ['/dashboard/invoices', 'Invoices'],
+      ['/dashboard/notifications', 'Notifications'],
+      ['/dashboard/profile', 'Account'],
+    ];
+    for (const [prefix, section] of financeMap) {
+      if (pathname === prefix || pathname.startsWith(prefix + '/')) return [section];
+    }
+    return [];
+  }
+
   if (isHR) {
     const hrMap: Record<string, string> = {
-      '/dashboard/hr/employees':                'Employees',
-      '/dashboard/hr/attendance':               'Attendance',
-      '/dashboard/hr/recruitment/jobs':         'Recruitment',
+      '/dashboard/hr/employees': 'Employees',
+      '/dashboard/hr/attendance': 'Attendance',
+      '/dashboard/hr/recruitment/jobs': 'Recruitment',
       '/dashboard/hr/recruitment/applications': 'Recruitment',
-      '/dashboard/hr/recruitment/resumes':      'Recruitment',
-      '/dashboard/notifications':               'Notifications',
-      '/dashboard/profile':                     'Account',
+      '/dashboard/hr/recruitment/resumes': 'Recruitment',
+      '/dashboard/notifications': 'Notifications',
+      '/dashboard/profile': 'Account',
     };
     for (const [prefix, section] of Object.entries(hrMap)) {
       if (pathname.startsWith(prefix)) return [section];
@@ -211,15 +476,14 @@ const getActiveSections = (pathname: string, isHR = false, isContent = false): s
 
   if (isContent) {
     const contentMap: Record<string, string> = {
-      '/dashboard/content':        'Content Overview',
-      '/dashboard/posts':          'Content Module',
-      '/dashboard/pages':          'Content Module',
-      '/dashboard/categories':     'Content Module',
-      '/dashboard/tags':           'Content Module',
-      '/dashboard/comments':       'Content Module',
-      '/dashboard/faq':            'Content Module',
-      '/dashboard/notifications':  'Notifications',
-      '/dashboard/profile':        'Account',
+      '/dashboard/content': 'Content Overview',
+      '/dashboard/posts': 'Content Module',
+      '/dashboard/categories': 'Content Module',
+      '/dashboard/tags': 'Content Module',
+      '/dashboard/comments': 'Content Module',
+      '/dashboard/faq': 'Content Module',
+      '/dashboard/notifications': 'Notifications',
+      '/dashboard/profile': 'Account',
     };
     for (const [prefix, section] of Object.entries(contentMap)) {
       if (pathname === prefix || pathname.startsWith(prefix + '/')) return [section];
@@ -228,30 +492,34 @@ const getActiveSections = (pathname: string, isHR = false, isContent = false): s
   }
 
   const map: Record<string, string> = {
-    '/dashboard/admin':             'Admin Module',
-    '/dashboard/users':             'Admin Module',
+    '/dashboard/admin': 'Admin Module',
+    '/dashboard/users': 'Admin Module',
     '/dashboard/roles-permissions': 'Admin Module',
-    '/dashboard/audit-logs':        'Admin Module',
-    '/dashboard/content':           'Content Module',
-    '/dashboard/posts':             'Content Module',
-    '/dashboard/pages':             'Content Module',
-    '/dashboard/categories':        'Content Module',
-    '/dashboard/tags':              'Content Module',
-    '/dashboard/comments':          'Content Module',
-    '/dashboard/faq':               'Content Module',
-    '/dashboard/hr':                'HR Module',
-    '/dashboard/sales':             'Sales Module',
-    '/crm':                         'Sales Module',
-    '/dashboard/subscribers':       'Sales Module',
-    '/dashboard/form-submissions':  'Sales Module',
-    '/dashboard/invoices':          'Finance',
-    '/dashboard/tickets':           'Support',
-    '/dashboard/chatbot':           'Support',
-    '/dashboard/analytics':         'Analytics',
-    '/dashboard/tasks':             'Planning',
-    '/dashboard/calendar':          'Planning',
-    '/dashboard/profile':           'Account',
-    '/dashboard/settings':          'Account',
+    '/dashboard/audit-logs': 'Admin Module',
+    '/dashboard/content': 'Content Module',
+    '/dashboard/posts': 'Content Module',
+    '/dashboard/categories': 'Content Module',
+    '/dashboard/tags': 'Content Module',
+    '/dashboard/comments': 'Content Module',
+    '/dashboard/faq': 'Content Module',
+    '/dashboard/hr': 'HR Module',
+    '/dashboard/sales': 'Sales Module',
+    '/dashboard/sales/leads': 'Sales Module',
+    '/dashboard/subscribers': 'Sales Module',
+    '/dashboard/form-submissions': 'Sales Module',
+    '/dashboard/seo': 'SEO Module',
+    '/dashboard/seo/pages': 'SEO Module',
+    '/dashboard/finance': 'Finance',
+    '/dashboard/finance/expenses': 'Finance',
+    '/dashboard/finance/reports': 'Finance',
+    '/dashboard/invoices': 'Finance',
+    '/dashboard/tickets': 'Support',
+    '/dashboard/chatbot': 'Support',
+    '/dashboard/analytics': 'Analytics',
+    '/dashboard/tasks': 'Planning',
+    '/dashboard/calendar': 'Planning',
+    '/dashboard/profile': 'Account',
+    '/dashboard/settings': 'Account',
   };
   for (const [prefix, section] of Object.entries(map)) {
     if (pathname.startsWith(prefix)) return [section];
@@ -316,24 +584,30 @@ function Tooltip({ children, label, show }: { children: React.ReactNode; label: 
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router   = useRouter();
+  const router = useRouter();
 
   const { unreadCount } = useNotifications();
   const { ticketsCount } = useSupportCounts();
   const { user: profileUser, loading: profileLoading } = useUserProfile();
 
-  const isHRUser = profileUser
-    ? !hasRole(profileUser, ['admin', 'super_admin']) && hasRole(profileUser, ['hr'])
-    : false;
+  const userRoles = getUserRoles(profileUser ?? {});
+  const isAdmin = hasRole(profileUser, ['admin', 'super_admin']);
+  const userModuleRoles = isAdmin ? [] : userRoles.filter((r) => MODULE_ROLES.includes(r as (typeof MODULE_ROLES)[number]));
+  const useCombinedMenu = userModuleRoles.length >= 2;
 
-  const isContentUser = profileUser
-    ? !hasRole(profileUser, ['admin', 'super_admin']) && hasRole(profileUser, ['content_creator'])
-    : false;
+  const isHRUser = userModuleRoles.includes('hr');
+  const isContentUser = userModuleRoles.includes('content_creator');
+  const isSeoUser = userModuleRoles.includes('seo_manager');
+  const isFinanceUser = userModuleRoles.includes('finance_manager');
+  const isSalesUser = userModuleRoles.includes('sales');
+  const isSupportUser = userModuleRoles.includes('support_executive');
+
+  const useModuleMenu = userModuleRoles.length >= 1;
 
   const [expandedItems, setExpandedItems] = useState<string[]>(() =>
-    getActiveSections(pathname, isHRUser, isContentUser),
+    getActiveSections(pathname, isHRUser, isContentUser, isFinanceUser, isSalesUser, isSupportUser, userModuleRoles),
   );
-  const [userInfo, setUserInfo] = useState<{ name: string; role: string; avatar?: string } | null>(null);
+  const [userInfo, setUserInfo] = useState<{ name: string; role: string; roles?: string[]; avatar?: string } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   const [collapsed, setCollapsed] = useState<boolean>(false);
@@ -354,21 +628,33 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
-    const active = getActiveSections(pathname, isHRUser, isContentUser);
+    const active = getActiveSections(pathname, isHRUser, isContentUser, isFinanceUser, isSalesUser, isSupportUser, userModuleRoles);
     if (active.length) {
       setExpandedItems((prev) => Array.from(new Set([...prev, ...active])));
     }
-  }, [pathname, isHRUser, isContentUser]);
+  }, [pathname, isHRUser, isContentUser, isFinanceUser, isSalesUser, isSupportUser, userModuleRoles]);
 
   useEffect(() => {
-    api
-      .get('/auth/profile')
-      .then(({ data }) => {
-        const u = data.data?.user;
-        if (u) setUserInfo({ name: u.name, role: u.role?.replace(/_/g, ' '), avatar: u.avatar });
-      })
-      .catch(() => {});
-  }, []);
+    const u = profileUser;
+    if (u) {
+      const roles = u.roles?.length ? u.roles : (u.role ? [u.role] : []);
+      const roleLabel = roles.length > 1
+        ? roles.map((r) => r.replace(/_/g, ' ')).join(', ')
+        : (u.role?.replace(/_/g, ' ') || '—');
+      setUserInfo({ name: u.name, role: roleLabel, roles: roles.map((r) => r.replace(/_/g, ' ')), avatar: (u as any).avatar || u.profileImage?.url });
+    } else if (!profileLoading) {
+      api.get('/auth/profile').then(({ data }) => {
+        const u2 = data.data?.user;
+        if (u2) {
+          const roles = u2.roles?.length ? u2.roles : (u2.role ? [u2.role] : []);
+          const roleLabel = roles.length > 1
+            ? roles.map((r: string) => r.replace(/_/g, ' ')).join(', ')
+            : (u2.role?.replace(/_/g, ' ') || '—');
+          setUserInfo({ name: u2.name, role: roleLabel, roles: roles.map((r: string) => r.replace(/_/g, ' ')), avatar: u2.avatar || u2.profileImage?.url });
+        }
+      }).catch(() => { });
+    }
+  }, [profileUser, profileLoading]);
 
   const toggleExpand = (label: string) => {
     if (collapsed) {
@@ -404,11 +690,21 @@ export default function Sidebar() {
 
   const menuItems = profileLoading
     ? []
-    : isHRUser
-      ? hrMenuItems(unreadCount)
-      : isContentUser
-        ? contentMenuItems(unreadCount)
-        : filterByPermission(adminMenuItems(unreadCount, ticketsCount));
+    : useCombinedMenu
+      ? getCombinedMenuItemsForRoles(userModuleRoles, unreadCount)
+      : useModuleMenu && isHRUser
+        ? hrMenuItems(unreadCount)
+        : useModuleMenu && isContentUser
+          ? contentMenuItems(unreadCount)
+          : useModuleMenu && isSeoUser
+            ? seoMenuItems(unreadCount)
+            : useModuleMenu && isFinanceUser
+              ? financeMenuItems(unreadCount)
+              : useModuleMenu && isSalesUser
+                ? salesMenuItems(unreadCount)
+                : useModuleMenu && isSupportUser
+                  ? supportMenuItems(unreadCount, ticketsCount)
+                  : filterByPermission(adminMenuItems(unreadCount, ticketsCount));
 
   const initials =
     userInfo?.name

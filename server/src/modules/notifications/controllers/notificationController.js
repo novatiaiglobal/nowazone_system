@@ -42,8 +42,29 @@ exports.markRead = async (req, res, next) => {
 
 exports.deleteNotification = async (req, res, next) => {
   try {
-    await Notification.findByIdAndDelete(req.params.id);
+    const deleted = await Notification.findOneAndDelete({
+      _id: req.params.id,
+      $or: [{ userId: req.user._id }, { isGlobal: true }],
+    });
+    if (!deleted) {
+      return res.status(404).json({ status: 'fail', message: 'Notification not found' });
+    }
     res.json({ status: 'success', message: 'Notification deleted' });
+  } catch (err) { next(err); }
+};
+
+exports.clearNotifications = async (req, res, next) => {
+  try {
+    const scope = req.query.scope === 'all' ? 'all' : 'read';
+    const filter = { $or: [{ userId: req.user._id }, { isGlobal: true }] };
+    if (scope === 'read') filter.isRead = true;
+
+    const result = await Notification.deleteMany(filter);
+    res.json({
+      status: 'success',
+      data: { deletedCount: result.deletedCount || 0, scope },
+      message: scope === 'all' ? 'All notifications cleared' : 'Read notifications cleared',
+    });
   } catch (err) { next(err); }
 };
 

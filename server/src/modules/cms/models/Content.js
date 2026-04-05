@@ -52,7 +52,7 @@ const contentSchema = new mongoose.Schema({
 contentSchema.index({ status: 1, publishedAt: -1 });
 contentSchema.index({ author: 1 });
 
-contentSchema.pre('save', function(next) {
+contentSchema.pre('save', function() {
   if (this.isModified('title') && !this.slug) {
     this.slug = this.title
       .toLowerCase()
@@ -64,7 +64,6 @@ contentSchema.pre('save', function(next) {
     this.publishedAt = new Date();
   }
   
-  next();
 });
 
 module.exports = mongoose.model('Content', contentSchema);

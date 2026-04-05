@@ -57,6 +57,26 @@ const leadSchema = new mongoose.Schema({
     },
   }],
   metadata: mongoose.Schema.Types.Mixed,
+  externalCrm: {
+    provider: {
+      type: String,
+      enum: ['hubspot', 'salesforce'],
+    },
+    externalId: {
+      type: String,
+    },
+    syncStatus: {
+      type: String,
+      enum: ['pending', 'synced', 'error'],
+      default: 'pending',
+    },
+    lastSyncAt: {
+      type: Date,
+    },
+    lastError: {
+      type: String,
+    },
+  },
 }, {
   timestamps: true,
 });

@@ -436,7 +436,7 @@ export default function ExecutiveDashboard() {
         color: 'var(--info, #3b82f6)',
         bg: 'color-mix(in srgb, var(--info, #3b82f6) 12%, transparent)',
         sub: `${data.leads.newSubscribers} new subscribers`,
-        href: '/crm/leads',
+        href: '/dashboard/sales/leads',
       },
       {
         label: 'Active Sessions',
@@ -861,7 +861,7 @@ export default function ExecutiveDashboard() {
                 <h2 className="text-sm font-semibold">Leads &amp; Conversions</h2>
               </div>
               <Link
-                href="/crm/leads"
+                href="/dashboard/sales/leads"
                 className="text-xs font-medium flex items-center gap-1 transition-opacity hover:opacity-80"
                 style={{ color: 'var(--accent-text)' }}
               >
@@ -875,7 +875,24 @@ export default function ExecutiveDashboard() {
                 <button
                   key={row.key}
                   type="button"
-                  onClick={() => router.push(`/crm/leads?filter=${row.key}`)}
+                  onClick={() => {
+                    if (row.key === 'subscribers') {
+                      router.push('/dashboard/subscribers');
+                      return;
+                    }
+                    if (['forms', 'assessments', 'appointments', 'downloads'].includes(row.key)) {
+                      const typeMap: Record<string, string> = {
+                        forms: 'contact',
+                        assessments: 'assessment',
+                        appointments: 'appointment',
+                        downloads: 'download',
+                      };
+                      const type = typeMap[row.key];
+                      router.push(type ? `/dashboard/form-submissions?type=${type}` : '/dashboard/form-submissions');
+                      return;
+                    }
+                    router.push('/dashboard/sales/leads');
+                  }}
                   className="w-full flex items-center justify-between px-5 py-3 transition-colors hover:bg-[var(--bg)] cursor-pointer group text-left"
                 >
                   <div className="flex items-center gap-3">

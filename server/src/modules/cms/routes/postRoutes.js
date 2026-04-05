@@ -11,6 +11,7 @@ const CMS_WRITE_ROLES   = ['super_admin', 'admin', 'content_creator'];
 const CMS_PUBLISH_ROLES = ['super_admin', 'admin', 'content_creator'];
 
 // ─── Public routes ─────────────────────────────────────────────────────────────
+router.get('/public', postController.listPublicPosts);
 router.get('/slug/:slug', postController.getPostBySlug);
 
 // ─── Protected routes ──────────────────────────────────────────────────────────
@@ -64,5 +65,8 @@ router.post(
   restrictTo(...CMS_PUBLISH_ROLES),
   postController.bulkUpdateStatus
 );
+
+// Engagement
+router.post('/:id/like', postController.togglePostLike);
 
 module.exports = router;

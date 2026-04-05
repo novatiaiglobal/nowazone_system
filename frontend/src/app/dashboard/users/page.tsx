@@ -431,11 +431,11 @@ export default function UsersPage() {
       await api.delete(`/auth/admin/users/${userId}`);
       toast.success('User deleted successfully');
       setDeleteConfirm(null);
+      await fetchUsers();
       if (selectedUserId === userId) {
         setSelectedUserId(null);
         setSelectedProfile(null);
       }
-      fetchUsers();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to delete user');
     } finally { setBusyUserId(null); }

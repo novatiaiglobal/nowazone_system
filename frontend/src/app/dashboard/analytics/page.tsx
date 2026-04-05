@@ -31,6 +31,20 @@ interface CountryTraffic {
   visitors: number;
 }
 
+const asArray = <T,>(value: unknown, nestedKey?: string): T[] => {
+  if (Array.isArray(value)) return value as T[];
+  if (
+    nestedKey &&
+    value &&
+    typeof value === 'object' &&
+    nestedKey in value &&
+    Array.isArray((value as Record<string, unknown>)[nestedKey])
+  ) {
+    return (value as Record<string, unknown>)[nestedKey] as T[];
+  }
+  return [];
+};
+
 const PERIODS = [
   { label: 'Today', value: 'today' },
   { label: '7 Days', value: '7d' },
@@ -59,12 +73,6 @@ function SkeletonPulse({ className = '', style = {} }: { className?: string; sty
   );
 }
 
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.03, delayChildren: 0.04 } } };
-const fadeUp = {
-  hidden: { opacity: 0, y: 12, scale: 0.98 },
-  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring' as const, stiffness: 280, damping: 24 } },
-};
-
 const KPI_COLORS: Record<string, string> = {
   cyan: 'var(--accent)',
   blue: 'var(--accent)',
@@ -92,9 +100,9 @@ export default function AnalyticsPage() {
         api.get('/analytics/traffic-country', { params: { period } }),
       ]);
       setOverview(overviewRes.data.data);
-      setTopPages(topPagesRes.data.data);
-      setTrafficSources(sourcesRes.data.data);
-      setCountryTraffic(countryRes.data.data);
+      setTopPages(asArray<TopPage>(topPagesRes.data.data, 'pages'));
+      setTrafficSources(asArray<TrafficSource>(sourcesRes.data.data, 'sources'));
+      setCountryTraffic(asArray<CountryTraffic>(countryRes.data.data, 'countries'));
     } catch {
       setError('Failed to load analytics data');
     } finally {
@@ -184,10 +192,14 @@ export default function AnalyticsPage() {
       )}
 
       {/* KPI Cards */}
-      <motion.div variants={stagger} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <motion.div key={i} variants={fadeUp}
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: i * 0.04 }}
               className="border rounded-xl p-4"
               style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
               <div className="flex items-center justify-between mb-3">
@@ -198,11 +210,15 @@ export default function AnalyticsPage() {
             </motion.div>
           ))
         ) : (
-          kpiCards.map(k => (
-            <motion.div key={k.label} variants={fadeUp}
-              whileHover={{ scale: 1.03, y: -3, transition: { type: 'spring' as const, stiffness: 400, damping: 18 } }}
-              whileTap={{ scale: 0.98 }}
-              className="border rounded-xl p-4 transition-shadow cursor-pointer"
+          kpiCards.map((k, i) => (
+            <motion.div
+              key={k.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22, delay: i * 0.05 }}
+              whileHover={{ y: -4, scale: 1.015, transition: { duration: 0.16 } }}
+              whileTap={{ scale: 0.99 }}
+              className="border rounded-xl p-4 transition-shadow"
               style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
               <div className="flex items-center justify-between mb-3">
                 <k.Icon size={16} style={{ color: KPI_COLORS[k.color] }} />
@@ -212,11 +228,12 @@ export default function AnalyticsPage() {
             </motion.div>
           ))
         )}
-      </motion.div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Pages */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          whileHover={{ y: -3, scale: 1.005, transition: { duration: 0.18 } }}
           className="border rounded-2xl p-5 transition-shadow"
           style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
           <h3 className="font-bold mb-4 flex items-center gap-2"><Eye size={16} style={{ color: 'var(--accent)' }} />Top Pages</h3>
@@ -261,6 +278,7 @@ export default function AnalyticsPage() {
 
         {/* Traffic Sources */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          whileHover={{ y: -3, scale: 1.005, transition: { duration: 0.18 } }}
           className="border rounded-2xl p-5 transition-shadow"
           style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
           <h3 className="font-bold mb-4 flex items-center gap-2"><Globe size={16} style={{ color: 'var(--accent)' }} />Traffic Sources</h3>
@@ -299,6 +317,7 @@ export default function AnalyticsPage() {
 
         {/* Traffic by Country */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          whileHover={{ y: -3, scale: 1.005, transition: { duration: 0.18 } }}
           className="border rounded-2xl p-5 transition-shadow lg:col-span-2"
           style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
           <h3 className="font-bold mb-4 flex items-center gap-2"><MapPin size={16} style={{ color: 'var(--accent)' }} />Traffic by Country</h3>

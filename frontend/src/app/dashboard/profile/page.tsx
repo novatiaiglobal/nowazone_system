@@ -11,7 +11,8 @@ import api from '@/lib/api';
 import { toast } from 'react-toastify';
 
 interface UserProfile {
-  _id: string; name: string; email: string; role: string; isActive: boolean;
+  _id: string; name: string; email: string; role: string; roles?: string[];
+  isActive: boolean;
   createdAt: string; lastLogin?: string; permissions?: string[]; twoFactorEnabled?: boolean;
   profileImage?: { url?: string; publicId?: string };
 }
@@ -258,7 +259,10 @@ export default function ProfilePage() {
   if (!profile) return null;
 
   const initials = profile.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-  const roleLabel = profile.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const roles = profile.roles?.length ? profile.roles : (profile.role ? [profile.role] : []);
+  const roleLabel = roles.length > 1
+    ? roles.map((r) => r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())).join(', ')
+    : profile.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}
@@ -375,7 +379,17 @@ export default function ProfilePage() {
                       <span className="truncate">{profile.email}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge label={roleLabel} color="var(--accent)" />
+                      {roles.length > 1 ? (
+                        roles.map((r) => (
+                          <Badge
+                            key={r}
+                            label={r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                            color="var(--accent)"
+                          />
+                        ))
+                      ) : (
+                        <Badge label={roleLabel} color="var(--accent)" />
+                      )}
                       <Badge
                         label={profile.isActive ? '● Active' : '● Inactive'}
                         color={profile.isActive ? 'var(--success)' : 'var(--error)'}

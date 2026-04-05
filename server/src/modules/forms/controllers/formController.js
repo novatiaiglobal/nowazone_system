@@ -1,7 +1,11 @@
 const FormSubmission = require('../models/FormSubmission');
 const Lead = require('../../crm/models/Lead');
+const CalendarEvent = require('../../calendar/models/CalendarEvent');
+const GoogleCalendarConnection = require('../../calendar/models/GoogleCalendarConnection');
 const { AppError } = require('../../../shared/middleware/errorHandler');
 const rateLimit = require('express-rate-limit');
+const emailService = require('../../../shared/services/emailService');
+const { invalidateDashboardCache } = require('../../../shared/services/dashboardCache');
 
 // ─── In-memory rate limiters for public form endpoints ──────────────────────
 
@@ -50,6 +54,119 @@ async function createLeadFromSubmission(submission, req) {
   return lead;
 }
 
+/**
+ * Create a CalendarEvent (and Google Meet link when possible) for an appointment
+ * and send a confirmation email to the requester.
+ *
+ * Uses APPOINTMENT_OWNER_USER_ID and APPOINTMENT_CALENDAR_ID env vars to decide
+ * which internal user/calendar should own the event.
+ */
+async function createAppointmentEventAndNotify(submission, req) {
+  try {
+    const ownerId = process.env.APPOINTMENT_OWNER_USER_ID;
+    if (!ownerId) return;
+
+    const { preferredDate, preferredTime, serviceType } = submission.formData || {};
+    if (!preferredDate || !preferredTime) return;
+
+    const start = new Date(`${preferredDate}T${preferredTime}`);
+    const end = new Date(start.getTime() + 30 * 60 * 1000); // default 30 minutes
+
+    const title = `Appointment – ${submission.name}`;
+    const description = submission.message || '';
+    const location = '';
+
+    // Create local calendar event
+    const event = await CalendarEvent.create({
+      title,
+      description,
+      startAt: start,
+      endAt: end,
+      isAllDay: false,
+      location,
+      visibility: 'team',
+      participants: [],
+      createdBy: ownerId,
+      source: 'manual',
+    });
+
+    let meetingUrl = '';
+
+    // Try to create a Google Calendar event with Meet link if Google is connected
+    const connection = await GoogleCalendarConnection.findOne({ user: ownerId }).select('+accessToken +refreshToken');
+    if (connection && process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET && process.env.GOOGLE_OAUTH_REDIRECT_URI) {
+      try {
+        const calendarId = process.env.APPOINTMENT_CALENDAR_ID || 'primary';
+        const endpointBase = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+        const endpoint = `${endpointBase}?conferenceDataVersion=1`;
+
+        const payload = {
+          summary: title,
+          description,
+          location,
+          start: { dateTime: start.toISOString() },
+          end:   { dateTime: end.toISOString() },
+          conferenceData: {
+            createRequest: {
+              requestId: `appt-${event._id}-${Date.now()}`,
+              conferenceSolutionKey: { type: 'hangoutsMeet' },
+            },
+          },
+        };
+
+        const accessToken = connection.accessToken;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          const created = await response.json();
+          event.googleEventId = created.id || event.googleEventId;
+          event.source = 'google';
+          const meetLink =
+            created.hangoutLink ||
+            created.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri ||
+            '';
+          if (meetLink) {
+            event.meetingUrl = meetLink;
+            meetingUrl = meetLink;
+          }
+          await event.save({ validateBeforeSave: false });
+        }
+      } catch {
+        // Ignore Google errors for now; appointment still exists locally
+      }
+    }
+
+    // Send confirmation email (fire-and-forget)
+    if (submission.email) {
+      const dateString = start.toLocaleString();
+      const serviceText = serviceType ? `Service: ${serviceType}\n` : '';
+      const linkText = meetingUrl ? `Join link: ${meetingUrl}\n` : '';
+      const text = `Hi ${submission.name},\n\nYour appointment request has been received.\n\n${serviceText}Date & time: ${dateString}\n${linkText}\nIf you need to reschedule, please reply to this email.\n\n— NowAZone`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto;">
+          <h2 style="color:#0f172a;">Your appointment is scheduled</h2>
+          <p>Hi ${submission.name},</p>
+          <p>Your appointment request has been received and scheduled.</p>
+          ${serviceType ? `<p><strong>Service:</strong> ${serviceType}</p>` : ''}
+          <p><strong>Date &amp; time:</strong> ${dateString}</p>
+          ${meetingUrl ? `<p><strong>Join link:</strong> <a href="${meetingUrl}">${meetingUrl}</a></p>` : ''}
+          <p>If you need to reschedule, just reply to this email.</p>
+        </div>
+      `;
+      emailService.sendMail?.({ to: submission.email, subject: 'Your appointment is scheduled', html, text }).catch(() => {});
+    }
+  } catch {
+    // Do not block form submission on calendar/email issues
+  }
+}
+
 // ─── Public form submission endpoints ───────────────────────────────────────────
 
 exports.submitContact = [
@@ -74,6 +191,7 @@ exports.submitContact = [
       });
 
       await createLeadFromSubmission(submission, req);
+      invalidateDashboardCache().catch(() => {});
 
       res.status(201).json({
         status: 'success',
@@ -105,6 +223,7 @@ exports.submitAssessment = [
       });
 
       await createLeadFromSubmission(submission, req);
+      invalidateDashboardCache().catch(() => {});
 
       res.status(201).json({
         status: 'success',
@@ -139,6 +258,10 @@ exports.submitAppointment = [
       });
 
       await createLeadFromSubmission(submission, req);
+
+      // Create a calendar event + Google Meet link (when configured) and email the client.
+      createAppointmentEventAndNotify(submission, req).catch(() => {});
+      invalidateDashboardCache().catch(() => {});
 
       res.status(201).json({
         status: 'success',
@@ -180,6 +303,27 @@ exports.submitDownload = [
     } catch (err) { next(err); }
   },
 ];
+
+// ─── Client: my form submissions ────────────────────────────────────────────────
+
+exports.getMySubmissions = async (req, res, next) => {
+  try {
+    const email = (req.user && req.user.email) ? req.user.email.toLowerCase() : null;
+    if (!email) return next(new AppError('Not authenticated', 401));
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    const filter = { email };
+    if (req.query.type) filter.type = req.query.type;
+
+    const [submissions, total] = await Promise.all([
+      FormSubmission.find(filter).select('-ipAddress -userAgent').sort('-createdAt').skip((page - 1) * limit).limit(limit),
+      FormSubmission.countDocuments(filter),
+    ]);
+
+    res.json({ status: 'success', data: { submissions, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
+  } catch (err) { next(err); }
+};
 
 // ─── Admin endpoints ────────────────────────────────────────────────────────────
 

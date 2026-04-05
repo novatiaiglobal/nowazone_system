@@ -45,6 +45,7 @@ const userSchema = new mongoose.Schema({
       'seo_manager',
       'support_executive',
       'finance_manager',
+      'customer',
     ],
   },
   roles: {
@@ -58,6 +59,7 @@ const userSchema = new mongoose.Schema({
       'seo_manager',
       'support_executive',
       'finance_manager',
+      'customer',
     ],
     default: function () {
       return this.role ? [this.role] : [];
@@ -127,7 +129,7 @@ userSchema.pre('init', function () {
   }
 });
 
-const ROLE_PRIORITY = ['super_admin', 'admin', 'hr', 'sales', 'content_creator', 'seo_manager', 'support_executive', 'finance_manager'];
+const ROLE_PRIORITY = ['super_admin', 'admin', 'hr', 'sales', 'content_creator', 'seo_manager', 'support_executive', 'finance_manager', 'customer'];
 
 userSchema.pre('save', function () {
   if (this.roles?.length) {

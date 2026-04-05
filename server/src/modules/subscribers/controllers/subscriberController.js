@@ -3,18 +3,30 @@ const { AppError } = require('../../../shared/middleware/errorHandler');
 
 exports.subscribe = async (req, res, next) => {
   try {
-    const { email, name } = req.body;
+    const { email, name, country, tags } = req.body;
     const existing = await Subscriber.findOne({ email });
     if (existing) {
       if (existing.status === 'unsubscribed') {
-        existing.status = 'active'; existing.unsubscribedAt = undefined;
-        await existing.save();
-        return res.json({ status: 'success', message: 'Resubscribed successfully' });
+        existing.status = 'active';
+        existing.unsubscribedAt = undefined;
       }
-      return res.json({ status: 'success', message: 'Already subscribed' });
+      if (name) existing.name = name;
+      if (country) existing.country = country;
+      if (Array.isArray(tags) && tags.length) {
+        existing.tags = Array.from(new Set([...(existing.tags || []), ...tags]));
+      }
+      await existing.save();
+      return res.json({ status: 'success', message: existing.status === 'active' ? 'Resubscribed successfully' : 'Already subscribed' });
     }
 
-    await Subscriber.create({ email, name, ipAddress: req.ip, confirmedAt: new Date() });
+    await Subscriber.create({
+      email,
+      name,
+      country: country || undefined,
+      tags: Array.isArray(tags) ? tags : undefined,
+      ipAddress: req.ip,
+      confirmedAt: new Date(),
+    });
     res.status(201).json({ status: 'success', message: 'Subscribed successfully' });
   } catch (err) { next(err); }
 };
@@ -37,6 +49,7 @@ exports.listSubscribers = async (req, res, next) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
+    if (req.query.country) filter.country = req.query.country;
     if (req.query.search) filter.$or = [
       { email: { $regex: req.query.search, $options: 'i' } },
       { name:  { $regex: req.query.search, $options: 'i' } },

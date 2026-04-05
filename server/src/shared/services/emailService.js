@@ -122,8 +122,12 @@ const sendApplicationStatusEmail = async ({ to, name, status, jobTitle }) => {
   return sendMail({ to, subject, html, text });
 };
 
+const sendNewsletterEmail = async ({ to, subject, html, text }) =>
+  sendMail({ to, subject, html, text });
+
 module.exports = {
   sendPasswordResetEmail,
   send2FACodeEmail,
   sendApplicationStatusEmail,
+  sendNewsletterEmail,
 };

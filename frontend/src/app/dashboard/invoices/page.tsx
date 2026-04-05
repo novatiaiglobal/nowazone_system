@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DollarSign, Plus, Search, FileText, CheckCircle, Clock, XCircle, X, Trash2, DownloadCloud, RefreshCw } from 'lucide-react';
+import { DollarSign, Plus, Search, FileText, CheckCircle, Clock, XCircle, X, Trash2, DownloadCloud, Pencil } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'react-toastify';
 
 interface InvoiceItem { description: string; quantity: number; unitPrice: number; taxRate: number; }
 interface Invoice {
   _id: string; invoiceNumber: string; clientName: string; clientEmail: string;
+  clientAddress?: string;
   items: InvoiceItem[]; total: number; subtotal: number; taxTotal: number;
   status: string; dueDate?: string; paidAt?: string; createdAt: string; notes?: string;
   isRecurring?: boolean;
@@ -41,6 +43,13 @@ const EMPTY_FORM = {
   firstIssueDate: '',
 };
 const EMPTY_ITEM = { description: '', quantity: 1, unitPrice: 0, taxRate: 0 };
+const formatDateForInput = (value?: string) => (value ? new Date(value).toISOString().slice(0, 10) : '');
+type BasicFormKey = 'clientName' | 'clientEmail';
+
+const CLIENT_FORM_FIELDS: { label: string; key: BasicFormKey; placeholder: string; type?: string }[] = [
+  { label: 'Client Name', key: 'clientName', placeholder: 'Acme Corp' },
+  { label: 'Client Email', key: 'clientEmail', placeholder: 'billing@acme.com', type: 'email' },
+];
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.03, delayChildren: 0.04 } } };
 const fadeUp = {
@@ -56,16 +65,19 @@ const STATS_CONFIG: Record<string, { accent: string; bg: string }> = {
 };
 
 export default function InvoicesPage() {
+  const searchParams = useSearchParams();
+  const statusFromUrl = searchParams.get('status') || '';
   const [invoices, setInvoices]   = useState<Invoice[]>([]);
   const [stats, setStats]         = useState<Stats | null>(null);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
-  const [statusFilter, setStatus] = useState('');
+  const [statusFilter, setStatus] = useState(statusFromUrl);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm]           = useState<typeof EMPTY_FORM>(EMPTY_FORM);
   const [items, setItems]         = useState<InvoiceItem[]>([{ ...EMPTY_ITEM }]);
   const [saving, setSaving]       = useState(false);
   const [selected, setSelected]   = useState<Invoice | null>(null);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -83,6 +95,10 @@ export default function InvoicesPage() {
   }, [statusFilter, search]);
 
   useEffect(() => {
+    setStatus(statusFromUrl);
+  }, [statusFromUrl]);
+
+  useEffect(() => {
     const t = setTimeout(fetchAll, 400);
     return () => clearTimeout(t);
   }, [fetchAll]);
@@ -97,16 +113,71 @@ export default function InvoicesPage() {
     return s + sub + (sub * (i.taxRate || 0)) / 100;
   }, 0);
 
-  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+  const resetEditorState = () => {
+    setShowModal(false);
+    setEditingInvoiceId(null);
+    setForm(EMPTY_FORM);
+    setItems([{ ...EMPTY_ITEM }]);
+  };
+
+  const openCreateModal = () => {
+    setEditingInvoiceId(null);
+    setForm(EMPTY_FORM);
+    setItems([{ ...EMPTY_ITEM }]);
+    setShowModal(true);
+  };
+
+  const openEditModal = (invoice: Invoice) => {
+    setEditingInvoiceId(invoice._id);
+    setForm({
+      clientName: invoice.clientName || '',
+      clientEmail: invoice.clientEmail || '',
+      clientAddress: invoice.clientAddress || '',
+      dueDate: formatDateForInput(invoice.dueDate),
+      notes: invoice.notes || '',
+      isRecurring: Boolean(invoice.isRecurring),
+      recurrenceInterval: (invoice.recurrenceInterval || '') as '' | 'weekly' | 'monthly' | 'yearly',
+      recurrenceCount: invoice.recurrenceCount ? String(invoice.recurrenceCount) : '',
+      firstIssueDate: formatDateForInput(invoice.firstIssueDate),
+    });
+    setItems(
+      invoice.items?.length
+        ? invoice.items.map((item) => ({
+            description: item.description || '',
+            quantity: Number.isFinite(item.quantity) ? item.quantity : 1,
+            unitPrice: Number.isFinite(item.unitPrice) ? item.unitPrice : 0,
+            taxRate: Number.isFinite(item.taxRate) ? item.taxRate : 0,
+          }))
+        : [{ ...EMPTY_ITEM }]
+    );
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); setSaving(true);
     try {
+      const cleanedItems = items
+        .map((item) => ({
+          description: item.description.trim(),
+          quantity: Number(item.quantity) || 0,
+          unitPrice: Number(item.unitPrice) || 0,
+          taxRate: Number(item.taxRate) || 0,
+        }))
+        .filter((item) => item.description.length > 0);
+
+      if (cleanedItems.length === 0) {
+        toast.error('Add at least one valid line item');
+        setSaving(false);
+        return;
+      }
+
       const payload: Record<string, unknown> = {
         clientName: form.clientName,
         clientEmail: form.clientEmail,
         clientAddress: form.clientAddress || undefined,
         dueDate: form.dueDate || undefined,
         notes: form.notes || undefined,
-        items,
+        items: cleanedItems,
       };
 
       if (form.isRecurring) {
@@ -116,10 +187,25 @@ export default function InvoicesPage() {
         payload.firstIssueDate = form.firstIssueDate || form.dueDate || undefined;
       }
 
-      await api.post('/invoices', payload);
-      toast.success('Invoice created!');
-      setShowModal(false); setForm(EMPTY_FORM); setItems([{ ...EMPTY_ITEM }]); fetchAll();
-    } catch (err: any) { toast.error(err.response?.data?.message || 'Failed'); }
+      if (editingInvoiceId) {
+        await api.patch(`/invoices/${editingInvoiceId}`, payload);
+        toast.success('Invoice updated!');
+      } else {
+        await api.post('/invoices', payload);
+        toast.success('Invoice created!');
+      }
+      resetEditorState();
+      fetchAll();
+    } catch (err: unknown) {
+      const message =
+        typeof err === 'object' &&
+        err !== null &&
+        'response' in err &&
+        typeof (err as { response?: { data?: { message?: string } } }).response?.data?.message === 'string'
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : 'Failed';
+      toast.error(message);
+    }
     finally { setSaving(false); }
   };
 
@@ -142,14 +228,14 @@ export default function InvoicesPage() {
 
   const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const downloadPdf = async (id: string) => {
+  const downloadPdf = async (id: string, invoiceNumber?: string) => {
     try {
       const response = await api.get(`/invoices/${id}/pdf`, { responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'invoice.pdf';
+      link.download = `${invoiceNumber || 'invoice'}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -184,7 +270,7 @@ export default function InvoicesPage() {
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Track revenue, payments, and outstanding invoices</p>
         </div>
-        <motion.button onClick={() => setShowModal(true)}
+        <motion.button onClick={openCreateModal}
           whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm text-white cursor-pointer"
           style={{ backgroundColor: 'var(--accent)' }}>
@@ -270,7 +356,7 @@ export default function InvoicesPage() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
                     <motion.button
-                      onClick={() => downloadPdf(inv._id)}
+                      onClick={() => downloadPdf(inv._id, inv.invoiceNumber)}
                       whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                       className="text-xs px-2.5 py-1 rounded-lg cursor-pointer flex items-center gap-1"
                       style={{ backgroundColor: 'var(--surface)', color: 'var(--text-secondary)', borderColor: 'var(--border)', borderWidth: 1, borderStyle: 'solid' }}
@@ -286,6 +372,15 @@ export default function InvoicesPage() {
                         Mark Paid
                       </motion.button>
                     )}
+                    <motion.button
+                      onClick={() => openEditModal(inv)}
+                      whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                      className="text-xs px-2.5 py-1 rounded-lg cursor-pointer flex items-center gap-1"
+                      style={{ backgroundColor: 'var(--surface)', color: 'var(--accent)', borderColor: 'var(--border)', borderWidth: 1, borderStyle: 'solid' }}
+                    >
+                      <Pencil size={12} />
+                      Edit
+                    </motion.button>
                     <motion.button onClick={() => deleteInvoice(inv._id)}
                       whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
                       className="cursor-pointer" style={{ color: 'var(--text-muted)' }}>
@@ -384,21 +479,21 @@ export default function InvoicesPage() {
         {showModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+            onClick={(e) => e.target === e.currentTarget && resetEditorState()}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
               style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
               onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-5 flex items-center gap-2"><DollarSign size={20} style={{ color: 'var(--success)' }} />Create Invoice</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <h2 className="text-lg font-bold mb-5 flex items-center gap-2">
+              <DollarSign size={20} style={{ color: 'var(--success)' }} />
+              {editingInvoiceId ? 'Edit Invoice' : 'Create Invoice'}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: 'Client Name', key: 'clientName', placeholder: 'Acme Corp' },
-                  { label: 'Client Email', key: 'clientEmail', placeholder: 'billing@acme.com', type: 'email' },
-                ].map(f => (
+                {CLIENT_FORM_FIELDS.map((f) => (
                   <div key={f.key}>
                     <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>{f.label}</label>
-                    <input type={f.type || 'text'} value={(form as any)[f.key]} placeholder={f.placeholder} required
+                    <input type={f.type || 'text'} value={form[f.key]} placeholder={f.placeholder} required
                       onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                       className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none"
                       style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
@@ -478,24 +573,40 @@ export default function InvoicesPage() {
                     <Plus size={12} /> Add Item
                   </motion.button>
                 </div>
+                
+                <div
+                  className="grid grid-cols-12 gap-2 px-1 mb-1 text-[11px] font-semibold uppercase tracking-wide"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <span className="col-span-4">Description</span>
+                  <span className="col-span-2">Qty</span>
+                  <span className="col-span-2">Unit Price</span>
+                  <span className="col-span-2">Tax %</span>
+                  <span className="col-span-1 text-right">Total</span>
+                  <span className="col-span-1 text-center">Remove</span>
+                </div>
                 <div className="space-y-2">
                   {items.map((item, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-center">
                       <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)}
-                        placeholder="Description" required className="col-span-5 px-3 py-2 border rounded-xl text-xs focus:outline-none"
+                        placeholder="Website development, hosting, etc." required className="col-span-4 px-3 py-2 border rounded-xl text-xs focus:outline-none"
                         style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
-                      <input type="number" value={item.quantity} onChange={e => updateItem(i, 'quantity', +e.target.value)}
-                        placeholder="Qty" min="1" required className="col-span-2 px-3 py-2 border rounded-xl text-xs focus:outline-none"
+                      <input type="number" value={item.quantity} onChange={e => updateItem(i, 'quantity', Number(e.target.value) || 1)}
+                        placeholder="1" min="1" required className="col-span-2 px-3 py-2 border rounded-xl text-xs focus:outline-none"
                         style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
-                      <input type="number" value={item.unitPrice} onChange={e => updateItem(i, 'unitPrice', +e.target.value)}
-                        placeholder="Price" step="0.01" min="0" required className="col-span-2 px-3 py-2 border rounded-xl text-xs focus:outline-none"
+                      <input type="number" value={item.unitPrice} onChange={e => updateItem(i, 'unitPrice', Number(e.target.value) || 0)}
+                        placeholder="0.00" step="0.01" min="0" required className="col-span-2 px-3 py-2 border rounded-xl text-xs focus:outline-none"
                         style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
-                      <input type="number" value={item.taxRate} onChange={e => updateItem(i, 'taxRate', +e.target.value)}
-                        placeholder="Tax%" step="0.1" min="0" className="col-span-2 px-3 py-2 border rounded-xl text-xs focus:outline-none"
+                      <input type="number" value={item.taxRate} onChange={e => updateItem(i, 'taxRate', Number(e.target.value) || 0)}
+                        placeholder="0" step="0.1" min="0" className="col-span-2 px-3 py-2 border rounded-xl text-xs focus:outline-none"
                         style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
+                      <div className="col-span-1 text-right text-xs font-semibold" style={{ color: 'var(--success)' }}>
+                        {fmt((item.quantity * item.unitPrice) + ((item.quantity * item.unitPrice) * item.taxRate) / 100)}
+                      </div>
                       <motion.button type="button" onClick={() => removeItem(i)}
+                        disabled={items.length === 1}
                         whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                        className="col-span-1 flex justify-center cursor-pointer" style={{ color: 'var(--text-muted)' }}>
+                        className="col-span-1 flex justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ color: 'var(--text-muted)' }}>
                         <X size={14} />
                       </motion.button>
                     </div>
@@ -515,7 +626,7 @@ export default function InvoicesPage() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <motion.button type="button" onClick={() => setShowModal(false)}
+                <motion.button type="button" onClick={resetEditorState}
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   className="flex-1 py-2.5 border rounded-xl text-sm cursor-pointer"
                   style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
@@ -525,7 +636,7 @@ export default function InvoicesPage() {
                   whileHover={{ scale: saving ? 1 : 1.02 }} whileTap={{ scale: saving ? 1 : 0.98 }}
                   className="flex-1 py-2.5 rounded-xl text-sm font-bold cursor-pointer disabled:opacity-50 text-white"
                   style={{ backgroundColor: 'var(--accent)' }}>
-                  {saving ? 'Creating…' : 'Create Invoice'}
+                  {saving ? (editingInvoiceId ? 'Updating…' : 'Creating…') : (editingInvoiceId ? 'Update Invoice' : 'Create Invoice')}
                 </motion.button>
               </div>
             </form>

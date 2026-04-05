@@ -110,14 +110,13 @@ pageSchema.index({ status: 1 });
 pageSchema.index({ author: 1 });
 
 // Pre-save middleware — generate slug from title if not provided
-pageSchema.pre('validate', function(next) {
+pageSchema.pre('validate', function() {
   if (this.isModified('title') && !this.slug) {
     this.slug = this.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
-  next();
 });
 
 pageSchema.pre('save', async function() {

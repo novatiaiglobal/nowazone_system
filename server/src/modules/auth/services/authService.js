@@ -10,9 +10,9 @@ const { sendPasswordResetEmail, send2FACodeEmail } = require('../../../shared/se
 const { addEmailJob } = require('../../../shared/queues/emailQueue');
 
 // Maximum failed login attempts before account lockout.
-// Set MAX_FAILED_ATTEMPTS=999 in .env (development) to effectively disable lockout.
-const MAX_FAILED_ATTEMPTS  = parseInt(process.env.MAX_FAILED_ATTEMPTS, 10)  || 5;
-const LOCKOUT_DURATION_MS  = parseInt(process.env.LOCKOUT_DURATION_MS, 10)  || 15 * 60 * 1000;
+// Hard capped at 10 to prevent brute force if .env is misconfigured, minimum lockout of 5 minutes.
+const MAX_FAILED_ATTEMPTS  = Math.min(parseInt(process.env.MAX_FAILED_ATTEMPTS, 10) || 5, 10);
+const LOCKOUT_DURATION_MS  = Math.max(parseInt(process.env.LOCKOUT_DURATION_MS, 10) || 15 * 60 * 1000, 5 * 60 * 1000);
 
 const hashToken = (token) =>
   crypto.createHash('sha256').update(token).digest('hex');
@@ -425,6 +425,7 @@ class AuthService {
         name: session.user.name,
         email: session.user.email,
         role: session.user.role,
+        roles: session.user.roles || (session.user.role ? [session.user.role] : []),
         permissions: session.user.permissions,
       },
     };
@@ -480,13 +481,10 @@ class AuthService {
     try {
       await addEmailJob('password_reset', { to: user.email, name: user.name, resetUrl });
     } catch (e) {
-      const sent = await sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl });
-      if (!sent?.sent && process.env.NODE_ENV !== 'production') {
-        console.log(`[DEBUG] Password reset token for ${email}: ${resetToken}`);
-      }
+      await sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl });
     }
 
-    return { message: 'If that email is registered, a reset link has been sent.', resetUrl };
+    return { message: 'If that email is registered, a reset link has been sent.' };
   }
 
   async resetPassword(token, newPassword) {
@@ -532,23 +530,128 @@ class AuthService {
         'cms.read', 'cms.create', 'cms.update', 'cms.delete',
         'media.read', 'media.upload',
         'crm.read', 'crm.write', 'leads.read', 'leads.create', 'leads.update', 'leads.delete',
-        'finance.read', 'finance.write', 'invoices.read', 'invoices.create',
+        'finance.read', 'finance.write', 'invoices.read', 'invoices.create', 'invoices.update', 'invoices.delete',
+        'expenses.read', 'expenses.create', 'expenses.update', 'expenses.delete',
         'tickets.read', 'tickets.create', 'tickets.update',
         'chatbot.manage', 'chatbot.chat',
       ],
       hr: ['users.read', 'users.create', 'users.update', 'reports.read', 'dashboard.read'],
-      sales: ['leads.read', 'leads.create', 'leads.update', 'crm.read', 'crm.write', 'dashboard.read'],
+      sales: [
+        'leads.read', 'leads.create', 'leads.update', 'leads.delete',
+        'crm.read', 'crm.write',
+        'forms.read', 'forms.update',
+        'dashboard.read',
+      ],
       content_creator: ['cms.read', 'cms.create', 'cms.update', 'media.read', 'media.upload', 'dashboard.read'],
-      seo_manager: ['cms.read', 'cms.update', 'seo.read', 'seo.write', 'analytics.read', 'dashboard.read'],
+      seo_manager: ['cms.read', 'cms.update', 'seo.read', 'seo.write', 'seo.publish', 'analytics.read', 'dashboard.read'],
       support_executive: [
         'tickets.read', 'tickets.create', 'tickets.update',
         'customers.read', 'dashboard.read',
         'chatbot.manage', 'chatbot.chat',
       ],
-      finance_manager: ['finance.read', 'finance.write', 'reports.read', 'invoices.read', 'invoices.create', 'dashboard.read'],
+      finance_manager: [
+        'finance.read', 'finance.write', 'reports.read',
+        'invoices.read', 'invoices.create', 'invoices.update', 'invoices.delete',
+        'expenses.read', 'expenses.create', 'expenses.update', 'expenses.delete',
+        'dashboard.read',
+      ],
+      customer: ['dashboard.read'],
     };
 
     return permissionMatrix[role] || ['dashboard.read'];
+  }
+
+  /** In-code default permissions for a role (no DB lookup). Used to merge into saved role permissions so new defaults (e.g. chatbot for support_executive) appear. */
+  getDefaultPermissionsFromMatrix(role) {
+    const permissionMatrix = {
+      super_admin: ['*'],
+      admin: [
+        'users.read', 'users.create', 'users.update', 'users.delete',
+        'reports.read', 'dashboard.read', 'settings.read', 'settings.update',
+        'analytics.read',
+        'cms.read', 'cms.create', 'cms.update', 'cms.delete',
+        'media.read', 'media.upload',
+        'crm.read', 'crm.write', 'leads.read', 'leads.create', 'leads.update', 'leads.delete',
+        'finance.read', 'finance.write', 'invoices.read', 'invoices.create', 'invoices.update', 'invoices.delete',
+        'expenses.read', 'expenses.create', 'expenses.update', 'expenses.delete',
+        'tickets.read', 'tickets.create', 'tickets.update',
+        'chatbot.manage', 'chatbot.chat',
+      ],
+      hr: ['users.read', 'users.create', 'users.update', 'reports.read', 'dashboard.read'],
+      sales: [
+        'leads.read', 'leads.create', 'leads.update', 'leads.delete',
+        'crm.read', 'crm.write',
+        'forms.read', 'forms.update',
+        'dashboard.read',
+      ],
+      content_creator: ['cms.read', 'cms.create', 'cms.update', 'media.read', 'media.upload', 'dashboard.read'],
+      seo_manager: ['cms.read', 'cms.update', 'seo.read', 'seo.write', 'seo.publish', 'analytics.read', 'dashboard.read'],
+      support_executive: [
+        'tickets.read', 'tickets.create', 'tickets.update',
+        'customers.read', 'dashboard.read',
+        'chatbot.manage', 'chatbot.chat',
+      ],
+      finance_manager: [
+        'finance.read', 'finance.write', 'reports.read',
+        'invoices.read', 'invoices.create', 'invoices.update', 'invoices.delete',
+        'expenses.read', 'expenses.create', 'expenses.update', 'expenses.delete',
+        'dashboard.read',
+      ],
+      customer: ['dashboard.read'],
+    };
+    return permissionMatrix[role] || ['dashboard.read'];
+  }
+
+  /**
+   * Verify Google ID token and find or create user (role: customer), then create session.
+   * @param {string} idToken - Google ID token from client
+   * @param {string} ipAddress
+   * @param {string} userAgent
+   * @returns {Promise<{ accessToken, refreshToken, refreshTokenTtlMs, user }>}
+   */
+  async googleLoginOrRegister(idToken, ipAddress, userAgent) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      throw new AppError('Google sign-in is not configured', 503);
+    }
+
+    let payload;
+    try {
+      const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error_description || data.error || 'Invalid token');
+      }
+      if (data.aud !== clientId) {
+        throw new Error('Token audience mismatch');
+      }
+      payload = data;
+    } catch (e) {
+      throw new AppError(e.message || 'Invalid Google token', 401);
+    }
+
+    const email = (payload.email || '').toLowerCase().trim();
+    if (!email) throw new AppError('Google account has no email', 400);
+
+    const name = payload.name || payload.given_name || email.split('@')[0] || 'User';
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const permissions = await this.getDefaultPermissions('customer');
+      user = await User.create({
+        name: name.trim(),
+        email,
+        password: crypto.randomBytes(24).toString('hex'),
+        role: 'customer',
+        roles: ['customer'],
+        permissions,
+        isActive: true,
+      });
+    } else if (!user.isActive) {
+      throw new AppError('Account is disabled', 403);
+    }
+
+    return this.createSession(user, ipAddress, userAgent, true);
   }
 }
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save, Briefcase, MapPin, Clock, FileText, Globe } from 'lucide-react';
+import { JobDescriptionEditor } from '@/components/JobDescriptionEditor';
 import { toast } from 'react-toastify';
 import { api } from '@/lib/api';
 
@@ -11,9 +12,10 @@ interface FormState {
   title: string;
   department: string;
   location: string;
-  type: 'remote' | 'onsite' | 'hybrid';
-  experienceLevel: string;
+  type: string;
+  experience: string;
   status: 'active' | 'draft';
+  positions: number;
   description: string;
 }
 
@@ -22,18 +24,24 @@ const DEPARTMENTS = [
   'HR', 'Finance', 'Operations', 'Customer Success', 'Legal',
 ];
 
-const EXPERIENCE_LEVELS = ['Entry Level', 'Mid Level', 'Senior Level', 'Lead', 'Manager', 'Director', 'C-Suite'];
+const EXPERIENCE_LEVELS: { value: string; label: string }[] = [
+  { value: 'entry', label: 'Entry Level' },
+  { value: 'mid', label: 'Mid Level' },
+  { value: 'senior', label: 'Senior Level' },
+  { value: 'lead', label: 'Lead' },
+  { value: 'executive', label: 'Executive / C-Suite' },
+];
 
 export default function NewJobPage() {
   const router = useRouter();
   const [form, setForm] = useState<FormState>({
-    title: '', department: '', location: '', type: 'onsite',
-    experienceLevel: '', status: 'draft', description: '',
+    title: '', department: '', location: '', type: 'full_time',
+    experience: 'mid', status: 'draft', positions: 1, description: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
 
-  const handleChange = (field: keyof FormState, value: string) => {
+  const handleChange = (field: keyof FormState, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
   };
@@ -51,7 +59,16 @@ export default function NewJobPage() {
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setSubmitting(true);
     try {
-      await api.post('/hr/jobs', form);
+      await api.post('/jobs', {
+        title: form.title,
+        department: form.department || 'General',
+        location: form.location || 'TBD',
+        type: form.type,
+        experience: form.experience || 'mid',
+        status: form.status,
+        positions: Math.max(1, form.positions || 1),
+        description: form.description,
+      });
       toast.success('Job posting created!');
       router.push('/dashboard/hr/recruitment/jobs');
     } catch (err: unknown) {
@@ -145,13 +162,16 @@ export default function NewJobPage() {
               </label>
               <select
                 value={form.type}
-                onChange={(e) => handleChange('type', e.target.value as FormState['type'])}
+                onChange={(e) => handleChange('type', e.target.value)}
                 className="w-full px-3 py-2.5 text-sm rounded-xl border outline-none cursor-pointer"
                 style={inputStyle()}
               >
-                <option value="onsite">Onsite</option>
+                <option value="full_time">Full-time</option>
+                <option value="part_time">Part-time</option>
+                <option value="contract">Contract</option>
                 <option value="remote">Remote</option>
                 <option value="hybrid">Hybrid</option>
+                <option value="onsite">Onsite</option>
               </select>
             </div>
 
@@ -160,14 +180,27 @@ export default function NewJobPage() {
                 <Clock size={13} style={{ color: 'var(--text-muted)' }} /> Experience Level
               </label>
               <select
-                value={form.experienceLevel}
-                onChange={(e) => handleChange('experienceLevel', e.target.value)}
+                value={form.experience}
+                onChange={(e) => handleChange('experience', e.target.value)}
                 className="w-full px-3 py-2.5 text-sm rounded-xl border outline-none cursor-pointer"
                 style={inputStyle()}
               >
-                <option value="">Select level</option>
-                {EXPERIENCE_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Number of positions
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={form.positions}
+                onChange={(e) => handleChange('positions', parseInt(e.target.value, 10) || 1)}
+                className="w-full px-3 py-2.5 text-sm rounded-xl border outline-none"
+                style={inputStyle()}
+              />
             </div>
           </div>
 
@@ -209,15 +242,13 @@ export default function NewJobPage() {
             <FileText size={13} style={{ color: 'var(--text-muted)' }} />
             Job Description <span style={{ color: 'var(--error)' }}>*</span>
           </label>
-          <textarea
+          <JobDescriptionEditor
             value={form.description}
-            onChange={(e) => handleChange('description', e.target.value)}
-            placeholder="Describe the role, responsibilities, requirements, and benefits…"
+            onChange={(v) => handleChange('description', v)}
             rows={10}
-            className="w-full px-3 py-2.5 text-sm rounded-xl border outline-none resize-y"
-            style={inputStyle(errors.description)}
+            error={errors.description}
+            inputStyle={inputStyle(errors.description)}
           />
-          {errors.description && <p className="text-xs" style={{ color: 'var(--error)' }}>{errors.description}</p>}
         </div>
 
         <div className="flex items-center justify-end gap-3">

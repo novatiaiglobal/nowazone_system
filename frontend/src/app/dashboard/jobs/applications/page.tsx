@@ -67,10 +67,21 @@ export default function ApplicationsPage() {
 
   const updateStatus = async (id: string, status: string) => {
     try {
-      await api.patch(`/applications/${id}`, { status });
+      const { data } = await api.patch(`/applications/${id}`, { status });
       setApps(prev => prev.map(a => a._id === id ? { ...a, status } : a));
       if (selected?._id === id) setSelected(s => s ? { ...s, status } : s);
-      toast.success('Status updated');
+      if (status === 'hired') {
+        const h = data?.data?.hiring;
+        const filled = h?.positionsFilled ?? 1;
+        const total = h?.totalPositions ?? 1;
+        if (h?.jobClosed) {
+          toast.success(`Hired! All ${total} position${total > 1 ? 's' : ''} filled. Welcome email sent, job closed, other applicants notified.`, { autoClose: 5000 });
+        } else {
+          toast.success(`Hired! Welcome email sent. ${filled} of ${total} position${total > 1 ? 's' : ''} filled.`, { autoClose: 5000 });
+        }
+      } else {
+        toast.success('Status updated');
+      }
     } catch { toast.error('Failed to update'); }
   };
 
@@ -282,6 +293,9 @@ export default function ApplicationsPage() {
 
               <div>
                   <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Update Status</label>
+                {selected.status === 'hired' ? (
+                  <p className="text-sm py-2" style={{ color: 'var(--text-muted)' }}>Hired — no further changes allowed.</p>
+                ) : (
                 <div className="grid grid-cols-2 gap-2">
                   {STATUS_OPTS.map(s => (
                     <motion.button key={s} onClick={() => updateStatus(selected._id, s)}
@@ -293,6 +307,7 @@ export default function ApplicationsPage() {
                     </motion.button>
                   ))}
                 </div>
+                )}
               </div>
             </div>
             </motion.div>

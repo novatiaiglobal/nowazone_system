@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -645,7 +645,7 @@ export default function RolesPermissionsPage() {
                 <tbody>
                   {Object.entries(filteredGroupedModules).map(
                     ([moduleKey, group]) => (
-                      <>
+                      <Fragment key={moduleKey}>
                         {/* Module group header row */}
                         <tr
                           key={`header-${moduleKey}`}
@@ -833,7 +833,7 @@ export default function RolesPermissionsPage() {
                               </motion.tr>
                             ))}
                         </AnimatePresence>
-                      </>
+                      </Fragment>
                     )
                   )}
                 </tbody>

@@ -48,7 +48,7 @@ class PostService {
   }
 
   async getPostBySlug(slug) {
-    const post = await Post.findOne({ slug, status: 'published' })
+    const post = await Post.findOne({ slug, status: 'published', visibility: 'public' })
       .populate('author', 'name email')
       .populate('coAuthors', 'name email')
       .populate('categories')
@@ -64,6 +64,52 @@ class PostService {
     await post.save();
     
     return post;
+  }
+
+  async listPublicPosts(options = {}) {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sort = '-publishedAt',
+    } = options;
+
+    const query = {
+      status: 'published',
+      visibility: 'public',
+    };
+
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { content: { $regex: search, $options: 'i' } },
+        { excerpt: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [posts, total] = await Promise.all([
+      Post.find(query)
+        .select('title slug excerpt featuredImage publishedAt author views likes commentsCount categories tags')
+        .populate('author', 'name')
+        .populate('categories', 'name slug')
+        .populate('tags', 'name slug')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+      Post.countDocuments(query),
+    ]);
+
+    return {
+      posts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async listPosts(filters = {}, options = {}) {
@@ -259,6 +305,32 @@ class PostService {
     };
     
     return schema;
+  }
+
+  async togglePostLike(postId, userId) {
+    const post = await Post.findById(postId).select('likes likedBy');
+
+    if (!post) {
+      throw new Error('Post not found');
+    }
+
+    const userIdString = String(userId);
+    const alreadyLiked = (post.likedBy || []).some((id) => String(id) === userIdString);
+
+    if (alreadyLiked) {
+      post.likedBy = post.likedBy.filter((id) => String(id) !== userIdString);
+      post.likes = Math.max(0, (post.likes || 0) - 1);
+    } else {
+      post.likedBy.push(userId);
+      post.likes = (post.likes || 0) + 1;
+    }
+
+    await post.save();
+
+    return {
+      liked: !alreadyLiked,
+      likes: post.likes,
+    };
   }
 }
 

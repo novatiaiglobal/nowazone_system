@@ -74,6 +74,20 @@ api.interceptors.response.use(
                             originalRequest?.url?.includes('/auth/reset-password') ||
                             originalRequest?.url?.includes('/auth/2fa/verify-login');
 
+    // Redirect to maintenance page when API returns 503 maintenance message (skip for auth so admins can log in / load profile)
+    const requestUrl = originalRequest?.url ?? '';
+    const isAuthRequest = requestUrl.includes('/auth/');
+    const isMaintenance =
+      error.response?.status === 503 &&
+      (error.response?.data?.message || '').toLowerCase().includes('maintenance');
+    if (isBrowser && isMaintenance && !isAuthRequest) {
+      const path = typeof window !== 'undefined' ? window.location.pathname : '';
+      if (path !== '/maintenance') {
+        window.location.href = '/maintenance';
+      }
+      return Promise.reject(error);
+    }
+
     if (isUnauthorized && !originalRequest._retry && !isRefreshRoute && !isAuthRoute) {
       if (isRefreshing) {
         // Queue requests while a refresh is already in-flight

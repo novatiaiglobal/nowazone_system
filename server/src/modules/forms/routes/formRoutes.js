@@ -9,10 +9,13 @@ router.post('/assessment', ctrl.submitAssessment);
 router.post('/appointment', ctrl.submitAppointment);
 router.post('/download', ctrl.submitDownload);
 
+// Client: my form submissions
+router.get('/mine', protect, ctrl.getMySubmissions);
+
 // Admin endpoints
-router.get('/submissions', protect, authorize('forms.read'), ctrl.getSubmissions);
-router.get('/submissions/:id', protect, authorize('forms.read'), ctrl.getSubmission);
-router.patch('/submissions/:id/status', protect, authorize('forms.update'), ctrl.updateSubmissionStatus);
-router.get('/stats', protect, authorize('forms.read'), ctrl.getStats);
+router.get('/submissions', protect, authorize('forms.read', 'crm.write', '*'), ctrl.getSubmissions);
+router.get('/submissions/:id', protect, authorize('forms.read', 'crm.write', '*'), ctrl.getSubmission);
+router.patch('/submissions/:id/status', protect, authorize('forms.update', 'crm.write', '*'), ctrl.updateSubmissionStatus);
+router.get('/stats', protect, authorize('forms.read', 'crm.write', '*'), ctrl.getStats);
 
 module.exports = router;

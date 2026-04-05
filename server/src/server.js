@@ -12,48 +12,52 @@ if ((process.env.JWT_ACCESS_SECRET || '').length < 32) {
   if (process.env.NODE_ENV === 'production') process.exit(1);
 }
 
-const express           = require('express');
-const helmet            = require('helmet');
-const cors              = require('cors');
-const cookieParser      = require('cookie-parser');
-const mongoSanitize     = require('express-mongo-sanitize');
-const http              = require('http');
-const { Server }   = require('socket.io');
-const jwt          = require('jsonwebtoken');
-const cookie       = require('cookie');
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const mongoSanitize = require('express-mongo-sanitize');
+const http = require('http');
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+const cookie = require('cookie');
 
-const connectDB    = require('./shared/config/database');
-const { errorHandler }   = require('./shared/middleware/errorHandler');
-const { apiLimiter }     = require('./shared/middleware/rateLimiter');
+const connectDB = require('./shared/config/database');
+const { errorHandler } = require('./shared/middleware/errorHandler');
+const { apiLimiter } = require('./shared/middleware/rateLimiter');
 const { csrfProtection } = require('./shared/middleware/auth');
+const { maintenanceMode, attachSettings } = require('./shared/middleware/maintenanceMode');
 
 // ─── Route imports ─────────────────────────────────────────────────────────────
-const authRoutes         = require('./modules/auth/routes/authRoutes');
-const dashboardRoutes    = require('./modules/dashboard/routes/dashboardRoutes');
-const leadRoutes         = require('./modules/crm/routes/leadRoutes');
-const contentRoutes      = require('./modules/cms/routes/contentRoutes');
-const postRoutes         = require('./modules/cms/routes/postRoutes');
-const pageRoutes         = require('./modules/cms/routes/pageRoutes');
-const categoryRoutes     = require('./modules/cms/routes/categoryRoutes');
-const tagRoutes          = require('./modules/cms/routes/tagRoutes');
-const commentRoutes      = require('./modules/cms/routes/commentRoutes');
-const uploadRoutes       = require('./modules/cms/routes/uploadRoutes');
-const jobRoutes          = require('./modules/jobs/routes/jobRoutes');
-const applicationRoutes  = require('./modules/jobs/routes/applicationRoutes');
-const invoiceRoutes      = require('./modules/invoices/routes/invoiceRoutes');
-const ticketRoutes       = require('./modules/tickets/routes/ticketRoutes');
+const authRoutes = require('./modules/auth/routes/authRoutes');
+const dashboardRoutes = require('./modules/dashboard/routes/dashboardRoutes');
+const leadRoutes = require('./modules/crm/routes/leadRoutes');
+const contentRoutes = require('./modules/cms/routes/contentRoutes');
+const postRoutes = require('./modules/cms/routes/postRoutes');
+const pageRoutes = require('./modules/cms/routes/pageRoutes');
+const categoryRoutes = require('./modules/cms/routes/categoryRoutes');
+const tagRoutes = require('./modules/cms/routes/tagRoutes');
+const commentRoutes = require('./modules/cms/routes/commentRoutes');
+const uploadRoutes = require('./modules/cms/routes/uploadRoutes');
+const jobRoutes = require('./modules/jobs/routes/jobRoutes');
+const applicationRoutes = require('./modules/jobs/routes/applicationRoutes');
+const invoiceRoutes = require('./modules/invoices/routes/invoiceRoutes');
+const expenseRoutes = require('./modules/expenses/routes/expenseRoutes');
+const financeRoutes = require('./modules/finance/routes/financeRoutes');
+const ticketRoutes = require('./modules/tickets/routes/ticketRoutes');
 const notificationRoutes = require('./modules/notifications/routes/notificationRoutes');
-const faqRoutes          = require('./modules/faq/routes/faqRoutes');
-const subscriberRoutes   = require('./modules/subscribers/routes/subscriberRoutes');
-const taskRoutes         = require('./modules/tasks/routes/taskRoutes');
-const calendarRoutes     = require('./modules/calendar/routes/calendarRoutes');
-const settingsRoutes     = require('./modules/settings/routes/settingsRoutes');
-const hrRoutes           = require('./modules/hr/routes/hrRoutes');
-const chatbotRoutes      = require('./modules/chatbot/routes/chatbotRoutes');
-const analyticsRoutes    = require('./modules/analytics/routes/analyticsRoutes');
-const formRoutes         = require('./modules/forms/routes/formRoutes');
+const faqRoutes = require('./modules/faq/routes/faqRoutes');
+const subscriberRoutes = require('./modules/subscribers/routes/subscriberRoutes');
+const taskRoutes = require('./modules/tasks/routes/taskRoutes');
+const calendarRoutes = require('./modules/calendar/routes/calendarRoutes');
+const settingsRoutes = require('./modules/settings/routes/settingsRoutes');
+const hrRoutes = require('./modules/hr/routes/hrRoutes');
+const chatbotRoutes = require('./modules/chatbot/routes/chatbotRoutes');
+const analyticsRoutes = require('./modules/analytics/routes/analyticsRoutes');
+const formRoutes = require('./modules/forms/routes/formRoutes');
+const seoRoutes = require('./modules/seo/routes/seoRoutes');
 
-const app    = express();
+const app = express();
 const server = http.createServer(app);
 
 // ─── Trust proxy ─────────────────────────────────────────────────────────────
@@ -63,7 +67,10 @@ app.set('trust proxy', process.env.TRUST_PROXY || (process.env.NODE_ENV === 'pro
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000').split(',').map((o) => o.trim());
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    // In production, block requests without origin (cURL, tools) to strict CORS routes if desired
+    if (!origin && process.env.NODE_ENV !== 'production') return callback(null, true);
+    if (!origin && process.env.NODE_ENV === 'production') return callback(null, true); // Still allowed for server-to-server, but restricted below for auth
+    if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
   credentials: true,
@@ -78,7 +85,7 @@ app.set('io', io);
 io.use(async (socket, next) => {
   try {
     const cookies = cookie.parse(socket.handshake.headers.cookie || '');
-    const token   = cookies.accessToken || socket.handshake.auth?.token;
+    const token = cookies.accessToken || socket.handshake.auth?.token;
     if (!token) return next(new Error('Authentication required'));
 
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
@@ -104,12 +111,21 @@ try {
   console.warn('[Server] Email worker failed to start:', err.message);
 }
 
+// ─── Maintenance jobs (backup + log retention) ─────────────────────────────────
+try {
+  const { startMaintenanceJobs } = require('./shared/services/maintenanceBackupService');
+  startMaintenanceJobs();
+  console.log('[Server] Maintenance jobs scheduler started');
+} catch (err) {
+  console.warn('[Server] Maintenance jobs failed to start:', err.message);
+}
+
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https:'],
+      scriptSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com', 'https://lh3.googleusercontent.com'],
       connectSrc: ["'self'"], fontSrc: ["'self'"], frameSrc: ["'none'"], objectSrc: ["'none'"],
     },
   },
@@ -126,40 +142,57 @@ app.use(mongoSanitize());
 
 app.use('/api', apiLimiter);
 app.use('/api', csrfProtection);
+app.use('/api', attachSettings);
+app.use('/api', maintenanceMode);
+
+// ─── Public maintenance status (no auth; allowed during maintenance) ──────────
+app.get('/api/maintenance-status', async (req, res) => {
+  try {
+    const Settings = require('./modules/settings/models/Settings');
+    const doc = await Settings.findOne().lean();
+    const maintenanceMode = Boolean(doc?.system?.maintenanceMode);
+    return res.json({ status: 'success', data: { maintenanceMode } });
+  } catch {
+    return res.json({ status: 'success', data: { maintenanceMode: false } });
+  }
+});
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'success', message: 'Server is running', timestamp: new Date().toISOString() }));
 
 // ─── API routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth',          authRoutes);
-app.use('/api/dashboard',     dashboardRoutes);
-app.use('/api/leads',         leadRoutes);
-app.use('/api/content',       contentRoutes);
-app.use('/api/posts',         postRoutes);
-app.use('/api/pages',         pageRoutes);
-app.use('/api/categories',    categoryRoutes);
-app.use('/api/tags',          tagRoutes);
-app.use('/api/comments',      commentRoutes);
-app.use('/api/upload',        uploadRoutes);
-app.use('/api/jobs',          jobRoutes);
-app.use('/api/applications',  applicationRoutes);
-app.use('/api/invoices',      invoiceRoutes);
-app.use('/api/tickets',       ticketRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/leads', leadRoutes);
+app.use('/api/content', contentRoutes);
+app.use('/api/posts', postRoutes);
+app.use('/api/pages', pageRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/tags', tagRoutes);
+app.use('/api/comments', commentRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/applications', applicationRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/finance', financeRoutes);
+app.use('/api/tickets', ticketRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/faq',           faqRoutes);
-app.use('/api/subscribers',   subscriberRoutes);
-app.use('/api/tasks',         taskRoutes);
-app.use('/api/calendar',      calendarRoutes);
-app.use('/api/settings',      settingsRoutes);
-app.use('/api/hr',            hrRoutes);
-app.use('/api/chatbot',       chatbotRoutes);
-app.use('/api/analytics',     analyticsRoutes);
-app.use('/api/forms',         formRoutes);
+app.use('/api/faq', faqRoutes);
+app.use('/api/subscribers', subscriberRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/hr', hrRoutes);
+app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/forms', formRoutes);
+app.use('/api/seo', seoRoutes);
 
 // ─── Socket.IO events ─────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   const userId = socket.user?._id?.toString();
-  const role   = socket.user?.role || 'unknown';
+  const role = socket.user?.role || 'unknown';
 
   console.log(`[Socket] connected: ${socket.id} (role: ${role})`);
 
@@ -241,18 +274,18 @@ chatNs.on('connection', (socket) => {
         // --- AI path ---
         const aiReply = await getAIResponse(message, faqs, historyBeforeThisMessage, config.temperature || 0.3).catch(
           (err) => {
-          const msg = String(err.message || '');
-          if (msg.includes('403')) {
-            console.error('[Chat WS] Ollama 403. Check OLLAMA_BASE_URL and model access.');
-          } else if (msg.includes('404') && process.env.USE_OLLAMA === 'true') {
-            console.error('[Chat WS] Ollama 404. Is Ollama running? Try: ollama serve. Base URL should be http://127.0.0.1:11434 (server calls /api/chat).');
-          } else if (msg.includes('OLLAMA_TIMEOUT')) {
-            console.error('[Chat WS] Ollama timeout. Reduce prompt size or increase OLLAMA_TIMEOUT_MS.');
-          } else {
-            console.error('[Chat WS] Chat AI error:', err.message);
+            const msg = String(err.message || '');
+            if (msg.includes('403')) {
+              console.error('[Chat WS] Ollama 403. Check OLLAMA_BASE_URL and model access.');
+            } else if (msg.includes('404') && process.env.USE_OLLAMA === 'true') {
+              console.error('[Chat WS] Ollama 404. Is Ollama running? Try: ollama serve. Base URL should be http://127.0.0.1:11434 (server calls /api/chat).');
+            } else if (msg.includes('OLLAMA_TIMEOUT')) {
+              console.error('[Chat WS] Ollama timeout. Reduce prompt size or increase OLLAMA_TIMEOUT_MS.');
+            } else {
+              console.error('[Chat WS] Chat AI error:', err.message);
+            }
+            return null;
           }
-          return null;
-        }
         );
 
         if (aiReply && aiReply !== 'ESCALATE') {

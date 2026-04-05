@@ -8,6 +8,7 @@ const PUBLIC_ROLES = [
   'seo_manager',
   'support_executive',
   'finance_manager',
+  'customer',
 ];
 
 // Only admins / super_admins may create these
@@ -82,6 +83,10 @@ const loginSchema = z.object({
   rememberMe: z.boolean().optional(),
 });
 
+const googleLoginSchema = z.object({
+  id_token: z.string().min(1, 'Google ID token is required'),
+});
+
 // refreshToken is optional in the body; the controller reads it from the httpOnly
 // cookie first (web flow) and falls back to the body (API/mobile flow).
 const refreshTokenSchema = z.object({
@@ -126,6 +131,7 @@ module.exports = {
   adminCreateUserSchema,
   adminUpdateUserSchema,
   loginSchema,
+  googleLoginSchema,
   refreshTokenSchema,
   forgotPasswordSchema,
   resetPasswordSchema,

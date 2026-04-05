@@ -5,16 +5,35 @@ const Post = require('../../cms/models/Post');
 const Comment = require('../../cms/models/Comment');
 const Session = require('../../auth/models/Session');
 const FormSubmission = require('../../forms/models/FormSubmission');
+const { getSystemSettings } = require('../../../shared/services/systemSettings');
 
 class DashboardService {
+  async isCacheEnabled() {
+    try {
+      const system = await getSystemSettings();
+      // Default to enabled if setting is missing; only disable when explicitly false.
+      return system.cacheEnabled !== false;
+    } catch {
+      // Fail-open on settings errors so dashboard still works.
+      return true;
+    }
+  }
+
   async getExecutiveOverview(period = 'today') {
     const allowedPeriods = new Set(['today', 'week', 'month']);
     const effectivePeriod = allowedPeriods.has(period) ? period : 'today';
 
     const cacheKey = `dashboard:executive:${effectivePeriod}`;
-    const cached = await redisClient.get(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
+    const useCache = await this.isCacheEnabled();
+    if (useCache) {
+      try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) {
+          return JSON.parse(cached);
+        }
+      } catch {
+        // Ignore Redis errors and fall back to live computation.
+      }
     }
 
     const today = new Date();
@@ -164,23 +183,29 @@ class DashboardService {
       },
     };
 
-    await redisClient.setex(cacheKey, 300, JSON.stringify(overview));
+    if (useCache) {
+      try {
+        await redisClient.setex(cacheKey, 300, JSON.stringify(overview));
+      } catch {
+        // Ignore Redis write errors.
+      }
+    }
     return overview;
   }
 
   async getHiringCounts() {
     try {
-      const HRJobPosting = require('../../hr/models/HRJobPosting');
-      const Resume = require('../../hr/models/Resume');
+      const Job = require('../../jobs/models/Job');
+      const Application = require('../../jobs/models/Application');
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const [activeJobs, totalResumes, applicationsToday, shortlistedCandidates] = await Promise.all([
-        HRJobPosting.countDocuments({ status: 'open' }),
-        Resume.countDocuments(),
-        Resume.countDocuments({ createdAt: { $gte: today } }),
-        Resume.countDocuments({ applicationStatus: 'interview' }),
+      const [activeJobs, totalApplications, applicationsToday, shortlistedCandidates] = await Promise.all([
+        Job.countDocuments({ status: 'active' }),
+        Application.countDocuments(),
+        Application.countDocuments({ createdAt: { $gte: today } }),
+        Application.countDocuments({ status: { $in: ['interview', 'offer', 'hired'] } }),
       ]);
-      return { activeJobs, totalResumes, applicationsToday, shortlistedCandidates };
+      return { activeJobs, totalResumes: totalApplications, applicationsToday, shortlistedCandidates };
     } catch (e) {
       return { activeJobs: 0, totalResumes: 0, applicationsToday: 0, shortlistedCandidates: 0 };
     }
@@ -240,8 +265,15 @@ class DashboardService {
 
   async getFormStats() {
     const cacheKey = 'dashboard:formStats';
-    const cached = await redisClient.get(cacheKey);
-    if (cached) return JSON.parse(cached);
+    const useCache = await this.isCacheEnabled();
+    if (useCache) {
+      try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) return JSON.parse(cached);
+      } catch {
+        // Ignore Redis errors and fall back to live computation.
+      }
+    }
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -285,7 +317,13 @@ class DashboardService {
       recent,
     };
 
-    await redisClient.setex(cacheKey, 120, JSON.stringify(data));
+    if (useCache) {
+      try {
+        await redisClient.setex(cacheKey, 120, JSON.stringify(data));
+      } catch {
+        // Ignore Redis write errors.
+      }
+    }
     return data;
   }
 

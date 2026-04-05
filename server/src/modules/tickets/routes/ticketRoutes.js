@@ -12,6 +12,10 @@ router.post('/public', publicLimiter, ctrl.createTicket);
 
 router.use(protect);
 
+router.get('/mine', ctrl.listMyTickets);
+router.get('/mine/:id', ctrl.getMyTicket);
+router.post('/mine/:id/messages', ctrl.addMyTicketMessage);
+
 router.get('/stats', restrictTo(...SUPPORT_ROLES), ctrl.getStats);
 router.get('/',      restrictTo(...SUPPORT_ROLES), ctrl.listTickets);
 router.post('/',     ctrl.createTicket);

@@ -1,4 +1,5 @@
 const leadService = require('../services/leadService');
+const { invalidateDashboardCache } = require('../../../shared/services/dashboardCache');
 
 class LeadController {
   async getLeads(req, res, next) {
@@ -36,6 +37,7 @@ class LeadController {
         message: 'Lead created successfully',
         data: { lead },
       });
+      invalidateDashboardCache().catch(() => {});
     } catch (error) {
       next(error);
     }
@@ -63,6 +65,7 @@ class LeadController {
         message: 'Lead updated successfully',
         data: { lead },
       });
+      invalidateDashboardCache().catch(() => {});
     } catch (error) {
       next(error);
     }
@@ -76,6 +79,7 @@ class LeadController {
         status: 'success',
         message: 'Lead deleted successfully',
       });
+      invalidateDashboardCache().catch(() => {});
     } catch (error) {
       next(error);
     }

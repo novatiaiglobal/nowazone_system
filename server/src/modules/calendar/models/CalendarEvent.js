@@ -51,6 +51,10 @@ const calendarEventSchema = new mongoose.Schema({
     default: 'manual',
   },
   googleEventId: String,
+  meetingUrl: {
+    type: String,
+    default: '',
+  },
 }, { timestamps: true });
 
 calendarEventSchema.index({ startAt: 1, endAt: 1 });

@@ -10,34 +10,37 @@ import {
 import { toast } from 'react-toastify';
 import { api } from '@/lib/api';
 
-type AppStatus = 'new' | 'interview' | 'selected' | 'rejected';
+type AppStatus = 'new' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
 
 interface Application {
   _id: string;
   applicantName: string;
-  email: string;
-  phone?: string;
-  jobId?: { _id: string; title: string };
-  fileUrl?: string;
+  applicantEmail: string;
+  applicantPhone?: string;
+  job?: { _id: string; title: string; department?: string };
+  resumeUrl?: string;
   skills?: string[];
   experience?: string;
-  education?: string;
-  applicationStatus: AppStatus;
+  status: AppStatus;
   notes?: string;
   createdAt: string;
 }
 
 const COLUMNS: { key: AppStatus; label: string; color: string; bg: string }[] = [
   { key: 'new',       label: 'New',       color: 'var(--info)',    bg: 'var(--info-subtle)' },
+  { key: 'screening', label: 'Screening', color: 'var(--info)',    bg: 'var(--info-subtle)' },
   { key: 'interview', label: 'Interview', color: 'var(--warning)', bg: 'var(--warning-subtle)' },
-  { key: 'selected',  label: 'Selected',  color: 'var(--success)', bg: 'var(--success-subtle)' },
+  { key: 'offer',     label: 'Offer',     color: 'var(--accent)',  bg: 'var(--accent-subtle)' },
+  { key: 'hired',     label: 'Hired',     color: 'var(--success)', bg: 'var(--success-subtle)' },
   { key: 'rejected',  label: 'Rejected',  color: 'var(--error)',   bg: 'var(--error-subtle)' },
 ];
 
 const STATUS_TRANSITIONS: Record<AppStatus, AppStatus[]> = {
-  new:       ['interview', 'rejected'],
-  interview: ['selected', 'rejected'],
-  selected:  [],
+  new:       ['screening', 'rejected'],
+  screening: ['interview', 'rejected'],
+  interview: ['offer', 'rejected'],
+  offer:     ['hired', 'rejected'],
+  hired:     [],
   rejected:  ['new'],
 };
 
@@ -56,7 +59,7 @@ export default function ApplicationsPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
-    api.get('/hr/jobs').then(({ data }) => {
+    api.get('/jobs?limit=100').then(({ data }) => {
       setJobs(data.data?.jobs || []);
     }).catch(() => {});
   }, []);
@@ -64,12 +67,12 @@ export default function ApplicationsPage() {
   const fetchApplications = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (search)       params.set('search',            search);
-      if (jobFilter)    params.set('jobId',              jobFilter);
-      if (statusFilter) params.set('applicationStatus', statusFilter);
-      const { data } = await api.get(`/hr/resumes?${params.toString()}`);
-      setApplications(data.data?.resumes || data.data || []);
+      const params = new URLSearchParams({ limit: '50' });
+      if (search)       params.set('search', search);
+      if (jobFilter)    params.set('job', jobFilter);
+      if (statusFilter) params.set('status', statusFilter);
+      const { data } = await api.get(`/applications?${params.toString()}`);
+      setApplications(data.data?.applications || data.data || []);
     } catch {
       setApplications([]);
     } finally {
@@ -82,9 +85,20 @@ export default function ApplicationsPage() {
   const updateStatus = async (app: Application, newStatus: AppStatus) => {
     setUpdatingStatus(true);
     try {
-      await api.patch(`/hr/resumes/${app._id}/status`, { applicationStatus: newStatus });
-      toast.success(`Moved to ${COLUMNS.find((c) => c.key === newStatus)?.label}`);
-      if (selected?._id === app._id) setSelected((prev) => prev ? { ...prev, applicationStatus: newStatus } : null);
+      const { data } = await api.patch(`/applications/${app._id}`, { status: newStatus });
+      if (newStatus === 'hired') {
+        const h = data?.data?.hiring;
+        const filled = h?.positionsFilled ?? 1;
+        const total = h?.totalPositions ?? 1;
+        if (h?.jobClosed) {
+          toast.success(`Hired! All ${total} position${total > 1 ? 's' : ''} filled. Welcome email sent, job closed, other applicants notified.`, { autoClose: 5000 });
+        } else {
+          toast.success(`Hired! Welcome email sent. ${filled} of ${total} position${total > 1 ? 's' : ''} filled.`, { autoClose: 5000 });
+        }
+      } else {
+        toast.success(`Moved to ${COLUMNS.find((c) => c.key === newStatus)?.label}`);
+      }
+      if (selected?._id === app._id) setSelected((prev) => prev ? { ...prev, status: newStatus } : null);
       fetchApplications();
     } catch { toast.error('Failed to update status'); }
     finally { setUpdatingStatus(false); }
@@ -94,7 +108,7 @@ export default function ApplicationsPage() {
     if (!selected) return;
     setSavingNotes(true);
     try {
-      await api.patch(`/hr/resumes/${selected._id}/status`, { notes });
+      await api.patch(`/applications/${selected._id}`, { notes });
       toast.success('Notes saved');
       setSelected((prev) => prev ? { ...prev, notes } : null);
       fetchApplications();
@@ -108,7 +122,7 @@ export default function ApplicationsPage() {
   };
 
   const grouped = COLUMNS.reduce((acc, col) => {
-    acc[col.key] = applications.filter((a) => a.applicationStatus === col.key);
+    acc[col.key] = applications.filter((a) => a.status === col.key);
     return acc;
   }, {} as Record<AppStatus, Application[]>);
 
@@ -194,9 +208,9 @@ export default function ApplicationsPage() {
                           <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
                             {app.applicantName}
                           </p>
-                          {app.jobId && (
+                          {app.job && (
                             <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                              {app.jobId.title}
+                              {app.job.title}
                             </p>
                           )}
                           <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -260,9 +274,9 @@ export default function ApplicationsPage() {
                     <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                       {selected.applicantName}
                     </h2>
-                    {selected.jobId && (
+                    {selected.job && (
                       <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        Applied for: <strong>{selected.jobId.title}</strong>
+                        Applied for: <strong>{selected.job.title}</strong>
                       </p>
                     )}
                   </div>
@@ -275,8 +289,8 @@ export default function ApplicationsPage() {
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Contact</p>
                   {[
-                    { icon: <Mail size={13} />, value: selected.email },
-                    selected.phone && { icon: <Phone size={13} />, value: selected.phone },
+                    { icon: <Mail size={13} />, value: selected.applicantEmail || (selected as any).email },
+                    (selected.applicantPhone || (selected as any).phone) && { icon: <Phone size={13} />, value: selected.applicantPhone || (selected as any).phone },
                     { icon: <Calendar size={13} />, value: `Applied ${new Date(selected.createdAt).toLocaleDateString()}` },
                   ].filter(Boolean).map((item, i) => item && (
                     <div key={i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -304,28 +318,18 @@ export default function ApplicationsPage() {
                   </div>
                 )}
 
-                {/* Experience + Education */}
-                {(selected.experience || selected.education) && (
-                  <div className="space-y-3">
-                    {selected.experience && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>Experience</p>
-                        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{selected.experience}</p>
-                      </div>
-                    )}
-                    {selected.education && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>Education</p>
-                        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{selected.education}</p>
-                      </div>
-                    )}
+                {/* Experience */}
+                {selected.experience && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>Experience</p>
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{selected.experience}</p>
                   </div>
                 )}
 
                 {/* Resume download */}
-                {selected.fileUrl && (
+                {(selected.resumeUrl || (selected as any).fileUrl) && (
                   <a
-                    href={selected.fileUrl}
+                    href={selected.resumeUrl || (selected as any).fileUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="flex items-center gap-2 px-4 py-3 rounded-xl border transition-all hover:bg-[var(--surface-muted)] text-sm font-medium"
@@ -337,15 +341,18 @@ export default function ApplicationsPage() {
                   </a>
                 )}
 
-                {/* Status actions */}
+                {/* Status actions — hidden for hired (final state) */}
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
-                    Current Stage: <span style={{ color: COLUMNS.find((c) => c.key === selected.applicationStatus)?.color }}>
-                      {COLUMNS.find((c) => c.key === selected.applicationStatus)?.label}
+                    Current Stage: <span style={{ color: COLUMNS.find((c) => c.key === selected.status)?.color }}>
+                      {COLUMNS.find((c) => c.key === selected.status)?.label}
                     </span>
                   </p>
+                  {selected.status === 'hired' ? (
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Hired — no further changes allowed.</p>
+                  ) : (
                   <div className="flex flex-wrap gap-2">
-                    {STATUS_TRANSITIONS[selected.applicationStatus].map((next) => {
+                    {(STATUS_TRANSITIONS[selected.status] || []).map((next) => {
                       const col = COLUMNS.find((c) => c.key === next)!;
                       return (
                         <button
@@ -355,35 +362,44 @@ export default function ApplicationsPage() {
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50 transition-all hover:opacity-90"
                           style={{ backgroundColor: col.bg, color: col.color }}
                         >
-                          {next === 'selected' ? <CheckCircle size={13} /> : next === 'rejected' ? <XCircle size={13} /> : <ChevronRight size={13} />}
+                          {next === 'hired' ? <CheckCircle size={13} /> : next === 'rejected' ? <XCircle size={13} /> : <ChevronRight size={13} />}
                           Move to {col.label}
                         </button>
                       );
                     })}
                   </div>
+                  )}
                 </div>
 
-                {/* Notes */}
+                {/* Notes — read-only for hired */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
                     <MessageSquare size={11} /> Recruiter Notes
                   </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Add internal notes about this candidate…"
-                    rows={4}
-                    className="w-full px-3 py-2.5 text-sm rounded-xl border outline-none resize-none"
-                    style={{ backgroundColor: 'var(--surface-muted)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-                  />
-                  <button
-                    onClick={saveNotes}
-                    disabled={savingNotes}
-                    className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer disabled:opacity-50 hover:opacity-90 text-white"
-                    style={{ backgroundColor: 'var(--accent)' }}
-                  >
-                    {savingNotes ? 'Saving…' : 'Save Notes'}
-                  </button>
+                  {selected.status === 'hired' ? (
+                    <p className="text-sm py-2" style={{ color: 'var(--text-secondary)' }}>
+                      {notes || 'No notes.'}
+                    </p>
+                  ) : (
+                    <>
+                      <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Add internal notes about this candidate…"
+                        rows={4}
+                        className="w-full px-3 py-2.5 text-sm rounded-xl border outline-none resize-none"
+                        style={{ backgroundColor: 'var(--surface-muted)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+                      />
+                      <button
+                        onClick={saveNotes}
+                        disabled={savingNotes}
+                        className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer disabled:opacity-50 hover:opacity-90 text-white"
+                        style={{ backgroundColor: 'var(--accent)' }}
+                      >
+                        {savingNotes ? 'Saving…' : 'Save Notes'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>

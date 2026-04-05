@@ -53,6 +53,27 @@ class PostController {
     }
   }
 
+  async listPublicPosts(req, res, next) {
+    try {
+      const options = {
+        page: parseInt(req.query.page, 10) || 1,
+        limit: parseInt(req.query.limit, 10) || 10,
+        search: req.query.search,
+        sort: req.query.sort || '-publishedAt',
+      };
+
+      const result = await postService.listPublicPosts(options);
+
+      res.status(200).json({
+        status: 'success',
+        data: result.posts,
+        pagination: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async listPosts(req, res, next) {
     try {
       const filters = {
@@ -185,6 +206,19 @@ class PostController {
       res.status(200).json({
         status: 'success',
         data: schema,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async togglePostLike(req, res, next) {
+    try {
+      const result = await postService.togglePostLike(req.params.id, req.user.id);
+
+      res.status(200).json({
+        status: 'success',
+        data: result,
       });
     } catch (error) {
       next(error);

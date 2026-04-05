@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Search, Briefcase, MapPin, Clock, Globe,
-  Pencil, Trash2, ToggleLeft, ToggleRight,
-  CheckCircle, AlertCircle,
+  Pencil, Trash2, ToggleLeft, ToggleRight, XCircle,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { api } from '@/lib/api';
@@ -16,22 +15,27 @@ interface JobPosting {
   title: string;
   department?: string;
   location?: string;
-  type: 'remote' | 'onsite' | 'hybrid';
+  type: string;
+  experience?: string;
   experienceLevel?: string;
-  status: 'active' | 'draft' | 'closed';
+  status: string;
+  positions?: number;
   publishedPlatforms?: { linkedin?: boolean; indeed?: boolean; naukri?: boolean };
+  applicationCount?: number;
   applicantCount?: number;
   createdAt: string;
 }
 
 const TYPE_LABELS: Record<string, string> = {
   remote: 'Remote', onsite: 'Onsite', hybrid: 'Hybrid',
+  full_time: 'Full-time', part_time: 'Part-time', contract: 'Contract',
 };
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   active: { label: 'Active', color: 'var(--success)', bg: 'var(--success-subtle)' },
   draft:  { label: 'Draft',  color: 'var(--warning)', bg: 'var(--warning-subtle)' },
   closed: { label: 'Closed', color: 'var(--text-muted)', bg: 'var(--surface-muted)' },
+  paused: { label: 'Paused', color: 'var(--warning)', bg: 'var(--warning-subtle)' },
 };
 
 export default function JobListingsPage() {
@@ -44,11 +48,11 @@ export default function JobListingsPage() {
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ limit: '50' });
       if (search) params.set('search', search);
       if (typeFilter) params.set('type', typeFilter);
       if (statusFilter) params.set('status', statusFilter);
-      const { data } = await api.get(`/hr/jobs?${params.toString()}`);
+      const { data } = await api.get(`/jobs?${params.toString()}`);
       setJobs(data.data?.jobs || data.data || []);
     } catch {
       setJobs([]);
@@ -62,30 +66,28 @@ export default function JobListingsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this job posting?')) return;
     try {
-      await api.delete(`/hr/jobs/${id}`);
+      await api.delete(`/jobs/${id}`);
       toast.success('Job deleted');
       fetchJobs();
     } catch { toast.error('Failed to delete job'); }
   };
 
   const toggleStatus = async (job: JobPosting) => {
-    const newStatus = job.status === 'active' ? 'closed' : 'active';
+    const newStatus = job.status === 'active' ? 'paused' : 'active';
     try {
-      await api.patch(`/hr/jobs/${job._id}`, { status: newStatus });
-      toast.success(`Job ${newStatus === 'active' ? 'activated' : 'closed'}`);
+      await api.patch(`/jobs/${job._id}`, { status: newStatus });
+      toast.success(`Job ${newStatus === 'active' ? 'activated' : 'paused'}`);
       fetchJobs();
     } catch { toast.error('Failed to update status'); }
   };
 
-  const togglePlatform = async (job: JobPosting, platform: 'linkedin' | 'indeed' | 'naukri') => {
-    const current = job.publishedPlatforms?.[platform] ?? false;
+  const closeJob = async (job: JobPosting) => {
+    if (!confirm(`Close "${job.title}"? This will stop accepting new applications.`)) return;
     try {
-      await api.post(`/hr/integrations/${platform}/post-job`, { jobId: job._id, publish: !current });
-      toast.success(current ? `Removed from ${platform}` : `Published to ${platform}`);
+      await api.patch(`/jobs/${job._id}`, { status: 'closed' });
+      toast.success('Job closed');
       fetchJobs();
-    } catch {
-      toast.error(`Failed to sync with ${platform}`);
-    }
+    } catch { toast.error('Failed to close job'); }
   };
 
   return (
@@ -129,9 +131,12 @@ export default function JobListingsPage() {
           style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
         >
           <option value="">All Types</option>
+          <option value="full_time">Full-time</option>
+          <option value="part_time">Part-time</option>
+          <option value="contract">Contract</option>
           <option value="remote">Remote</option>
-          <option value="onsite">Onsite</option>
           <option value="hybrid">Hybrid</option>
+          <option value="onsite">Onsite</option>
         </select>
         <select
           value={statusFilter}
@@ -142,6 +147,7 @@ export default function JobListingsPage() {
           <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="draft">Draft</option>
+          <option value="paused">Paused</option>
           <option value="closed">Closed</option>
         </select>
       </div>
@@ -174,7 +180,9 @@ export default function JobListingsPage() {
         <div className="space-y-3">
           <AnimatePresence>
             {jobs.map((job, i) => {
-              const statusCfg = STATUS_CONFIG[job.status];
+              const statusCfg = STATUS_CONFIG[job.status] || { label: job.status, color: 'var(--text-muted)', bg: 'var(--surface-muted)' };
+              const appCount = job.applicationCount ?? job.applicantCount ?? 0;
+              const expLevel = job.experienceLevel ?? job.experience ?? '';
               return (
                 <motion.div
                   key={job._id}
@@ -205,47 +213,42 @@ export default function JobListingsPage() {
                         {job.location && (
                           <span className="flex items-center gap-1"><MapPin size={11} /> {job.location}</span>
                         )}
-                        <span className="flex items-center gap-1"><Globe size={11} /> {TYPE_LABELS[job.type]}</span>
-                        {job.experienceLevel && (
-                          <span className="flex items-center gap-1"><Clock size={11} /> {job.experienceLevel}</span>
+                        <span className="flex items-center gap-1"><Globe size={11} /> {TYPE_LABELS[job.type] || job.type?.replace(/_/g, ' ')}</span>
+                        {expLevel && (
+                          <span className="flex items-center gap-1"><Clock size={11} /> {expLevel}</span>
                         )}
-                        <span>{job.applicantCount ?? 0} applicant{job.applicantCount !== 1 ? 's' : ''}</span>
+                        <span>{appCount} applicant{appCount !== 1 ? 's' : ''}</span>
+                        {(job.positions ?? 1) > 1 && (
+                          <span title="Number of positions">{job.positions} position{(job.positions ?? 1) !== 1 ? 's' : ''}</span>
+                        )}
                         <span>Posted {new Date(job.createdAt).toLocaleDateString()}</span>
                       </div>
 
-                      {/* Platform sync */}
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {(['linkedin', 'indeed', 'naukri'] as const).map((platform) => {
-                          const synced = job.publishedPlatforms?.[platform];
-                          return (
-                            <button
-                              key={platform}
-                              onClick={() => togglePlatform(job, platform)}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all cursor-pointer hover:opacity-80"
-                              style={{
-                                borderColor: synced ? 'var(--success)' : 'var(--border)',
-                                color: synced ? 'var(--success)' : 'var(--text-muted)',
-                                backgroundColor: synced ? 'var(--success-subtle)' : 'transparent',
-                              }}
-                            >
-                              {synced ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
-                              {platform.charAt(0).toUpperCase() + platform.slice(1)}
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
 
                     {/* Right: Actions */}
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => toggleStatus(job)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer transition-all hover:bg-[var(--surface-muted)]"
-                        style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-                      >
-                        {job.status === 'active' ? <ToggleRight size={14} style={{ color: 'var(--success)' }} /> : <ToggleLeft size={14} />}
-                        {job.status === 'active' ? 'Close' : 'Activate'}
-                      </button>
+                      {job.status !== 'closed' && (
+                        <>
+                          <button
+                            onClick={() => toggleStatus(job)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer transition-all hover:bg-[var(--surface-muted)]"
+                            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+                          >
+                            {job.status === 'active' ? <ToggleRight size={14} style={{ color: 'var(--success)' }} /> : <ToggleLeft size={14} />}
+                            {job.status === 'active' ? 'Pause' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => closeJob(job)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer transition-all hover:bg-[var(--error-subtle)]"
+                            style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                            title="Close job (stop accepting applications)"
+                          >
+                            <XCircle size={14} />
+                            Close
+                          </button>
+                        </>
+                      )}
                       <Link
                         href={`/dashboard/hr/recruitment/jobs/${job._id}/edit`}
                         className="p-2 rounded-xl border transition-all hover:bg-[var(--surface-muted)]"

@@ -42,7 +42,12 @@ exports.getTicket = async (req, res, next) => {
 
 exports.createTicket = async (req, res, next) => {
   try {
-    const ticket = await Ticket.create({ ...req.body, createdBy: req.user?._id });
+    const payload = { ...req.body, createdBy: req.user?._id };
+    if (req.user) {
+      payload.requesterName = payload.requesterName || req.user.name;
+      payload.requesterEmail = (payload.requesterEmail || req.user.email || '').toLowerCase();
+    }
+    const ticket = await Ticket.create(payload);
     res.status(201).json({ status: 'success', data: { ticket } });
   } catch (err) { next(err); }
 };
@@ -105,6 +110,65 @@ exports.deleteTicket = async (req, res, next) => {
     const ticket = await Ticket.findByIdAndDelete(req.params.id);
     if (!ticket) return next(new AppError('Ticket not found', 404));
     res.json({ status: 'success', message: 'Ticket deleted' });
+  } catch (err) { next(err); }
+};
+
+/** GET /tickets/mine — list tickets for the authenticated user (by requesterEmail). */
+exports.listMyTickets = async (req, res, next) => {
+  try {
+    const email = (req.user && req.user.email) ? req.user.email.toLowerCase() : null;
+    if (!email) return next(new AppError('Not authenticated', 401));
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    const filter = { requesterEmail: email };
+    if (req.query.status) filter.status = req.query.status;
+
+    const [tickets, total] = await Promise.all([
+      Ticket.find(filter).select('-messages').sort('-createdAt').skip((page - 1) * limit).limit(limit),
+      Ticket.countDocuments(filter),
+    ]);
+
+    res.json({ status: 'success', data: { tickets, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
+  } catch (err) { next(err); }
+};
+
+/** GET /tickets/mine/:id — get one of the user's own tickets (by requesterEmail). */
+exports.getMyTicket = async (req, res, next) => {
+  try {
+    const email = (req.user && req.user.email) ? req.user.email.toLowerCase() : null;
+    if (!email) return next(new AppError('Not authenticated', 401));
+
+    const ticket = await Ticket.findOne({ _id: req.params.id, requesterEmail: email })
+      .populate('messages.sender', 'name');
+    if (!ticket) return next(new AppError('Ticket not found', 404));
+    res.json({ status: 'success', data: { ticket } });
+  } catch (err) { next(err); }
+};
+
+/** POST /tickets/mine/:id/messages — client adds a message to their own ticket. */
+exports.addMyTicketMessage = async (req, res, next) => {
+  try {
+    const email = (req.user && req.user.email) ? req.user.email.toLowerCase() : null;
+    if (!email) return next(new AppError('Not authenticated', 401));
+
+    const ticket = await Ticket.findOne({ _id: req.params.id, requesterEmail: email });
+    if (!ticket) return next(new AppError('Ticket not found', 404));
+
+    const content = (req.body.content || '').trim();
+    if (!content) return next(new AppError('Message content is required', 400));
+
+    const message = {
+      sender: req.user._id,
+      senderName: req.user.name,
+      content,
+      isInternal: false,
+    };
+
+    ticket.messages.push(message);
+    await ticket.save();
+
+    res.status(201).json({ status: 'success', data: { message: ticket.messages[ticket.messages.length - 1] } });
   } catch (err) { next(err); }
 };
 

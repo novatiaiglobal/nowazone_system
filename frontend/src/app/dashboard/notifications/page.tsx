@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Check, Trash2, RefreshCw, Info, AlertTriangle, CheckCircle, XCircle, Briefcase, DollarSign, LifeBuoy, Settings } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'react-toastify';
+import { useRouter } from 'next/navigation';
 
 interface Notification {
   _id: string; title: string; message: string; type: string; isRead: boolean; link?: string; createdAt: string;
@@ -35,19 +36,25 @@ const TYPE_BG: Record<string, string> = {
 };
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount]     = useState(0);
   const [loading, setLoading]             = useState(true);
   const [filter, setFilter]               = useState<'all' | 'unread'>('all');
+  const [refreshing, setRefreshing]       = useState(false);
 
   const fetchNotifications = useCallback(async () => {
+    setRefreshing(true);
     try {
       const params = filter === 'unread' ? '?unreadOnly=true' : '';
       const { data } = await api.get(`/notifications${params}`);
       setNotifications(data.data.notifications || []);
       setUnreadCount(data.data.unreadCount || 0);
     } catch { toast.error('Failed to load notifications'); }
-    finally { setLoading(false); }
+    finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [filter]);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
@@ -71,9 +78,51 @@ export default function NotificationsPage() {
 
   const deleteNotification = async (id: string) => {
     try {
+      const target = notifications.find((n) => n._id === id);
       await api.delete(`/notifications/${id}`);
       setNotifications(prev => prev.filter(n => n._id !== id));
+      if (target && !target.isRead) {
+        setUnreadCount(prev => Math.max(prev - 1, 0));
+      }
     } catch { toast.error('Failed'); }
+  };
+
+  const clearRead = async () => {
+    try {
+      const { data } = await api.delete('/notifications?scope=read');
+      const deleted = data?.data?.deletedCount || 0;
+      setNotifications((prev) => prev.filter((n) => !n.isRead));
+      if (deleted > 0) toast.success(`Cleared ${deleted} read notification${deleted > 1 ? 's' : ''}`);
+      else toast.info('No read notifications to clear');
+    } catch {
+      toast.error('Failed to clear read notifications');
+    }
+  };
+
+  const clearAll = async () => {
+    try {
+      const { data } = await api.delete('/notifications?scope=all');
+      const deleted = data?.data?.deletedCount || 0;
+      setNotifications([]);
+      setUnreadCount(0);
+      if (deleted > 0) toast.success(`Cleared ${deleted} notification${deleted > 1 ? 's' : ''}`);
+      else toast.info('No notifications to clear');
+    } catch {
+      toast.error('Failed to clear notifications');
+    }
+  };
+
+  const openNotification = async (notif: Notification) => {
+    if (!notif.isRead) {
+      await markRead(notif._id);
+    }
+    if (notif.link) {
+      if (notif.link.startsWith('/')) {
+        router.push(notif.link);
+      } else {
+        window.open(notif.link, '_blank', 'noopener,noreferrer');
+      }
+    }
   };
 
   const relativeTime = (date: string) => {
@@ -128,7 +177,19 @@ export default function NotificationsPage() {
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
             className="flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm cursor-pointer"
             style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          </motion.button>
+          <motion.button onClick={clearRead}
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            className="flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm cursor-pointer"
+            style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+            <Trash2 size={14} /> Clear read
+          </motion.button>
+          <motion.button onClick={clearAll}
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            className="flex items-center gap-2 px-4 py-2.5 border rounded-xl text-sm cursor-pointer"
+            style={{ backgroundColor: 'var(--error-subtle, rgba(239,68,68,0.1))', borderColor: 'var(--error, #ef4444)', color: 'var(--error, #ef4444)' }}>
+            <Trash2 size={14} /> Clear all
           </motion.button>
         </div>
       </div>
@@ -154,6 +215,7 @@ export default function NotificationsPage() {
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 20 }}
               transition={{ delay: i * 0.02 }}
               whileHover={{ scale: 1.01 }}
+              onClick={() => openNotification(notif)}
               className={`flex items-start gap-4 p-4 rounded-xl border transition-shadow cursor-pointer ${!notif.isRead ? '' : 'opacity-60'}`}
               style={!notif.isRead
                 ? { backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }
@@ -169,17 +231,22 @@ export default function NotificationsPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {!notif.isRead && (
-                      <button onClick={() => markRead(notif._id)} title="Mark as read"
+                      <button onClick={(e) => { e.stopPropagation(); markRead(notif._id); }} title="Mark as read"
                         className="text-gray-500 transition-colors cursor-pointer" style={{ color: 'var(--text-muted)' }}>
                         <Check size={13} />
                       </button>
                     )}
-                    <button onClick={() => deleteNotification(notif._id)} className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer">
+                    <button onClick={(e) => { e.stopPropagation(); deleteNotification(notif._id); }} className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer">
                       <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
                 <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-muted)' }}>{relativeTime(notif.createdAt)}</p>
+                {notif.link && (
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--accent)' }}>
+                    Open related item
+                  </p>
+                )}
               </div>
               {!notif.isRead && (
                 <div className="w-2 h-2 rounded-full flex-shrink-0 mt-2 animate-pulse" style={{ backgroundColor: 'var(--accent)' }} />

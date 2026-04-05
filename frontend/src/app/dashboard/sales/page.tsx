@@ -234,7 +234,7 @@ export default function SalesDashboardPage() {
           >
             <RefreshCw size={14} />
           </motion.button>
-          <Link href="/crm/leads">
+          <Link href="/dashboard/sales/leads">
             <motion.button
               type="button"
               whileHover={{ scale: 1.03 }}
@@ -257,7 +257,9 @@ export default function SalesDashboardPage() {
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          className="rounded-xl border p-4"
+          whileHover={{ y: -4, scale: 1.02, transition: { duration: 0.16 } }}
+          whileTap={{ scale: 0.99 }}
+          className="rounded-xl border p-4 transition-shadow hover:shadow-md cursor-default"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -290,7 +292,9 @@ export default function SalesDashboardPage() {
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          className="rounded-xl border p-4"
+          whileHover={{ y: -4, scale: 1.02, transition: { duration: 0.16 } }}
+          whileTap={{ scale: 0.99 }}
+          className="rounded-xl border p-4 transition-shadow hover:shadow-md cursor-default"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -323,7 +327,9 @@ export default function SalesDashboardPage() {
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          className="rounded-xl border p-4"
+          whileHover={{ y: -4, scale: 1.02, transition: { duration: 0.16 } }}
+          whileTap={{ scale: 0.99 }}
+          className="rounded-xl border p-4 transition-shadow hover:shadow-md cursor-default"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -356,7 +362,9 @@ export default function SalesDashboardPage() {
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          className="rounded-xl border p-4"
+          whileHover={{ y: -4, scale: 1.02, transition: { duration: 0.16 } }}
+          whileTap={{ scale: 0.99 }}
+          className="rounded-xl border p-4 transition-shadow hover:shadow-md cursor-default"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -406,9 +414,11 @@ export default function SalesDashboardPage() {
             const cfg = STAT_CONFIG[status];
             const count = stats.byStatus[status];
             return (
-              <div
+              <motion.div
                 key={status}
-                className="rounded-lg border px-3 py-3"
+                whileHover={{ y: -2, scale: 1.02, transition: { duration: 0.14 } }}
+                whileTap={{ scale: 0.98 }}
+                className="rounded-lg border px-3 py-3 transition-shadow hover:shadow-sm cursor-default"
                 style={{
                   backgroundColor: cfg.bg,
                   borderColor: 'var(--border)',
@@ -428,7 +438,7 @@ export default function SalesDashboardPage() {
                 >
                   {count}
                 </p>
-              </div>
+              </motion.div>
             );
           })}
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Globe, Shield, Bell, Database, Save, ChevronRight } from 'lucide-react';
+import { Settings, Globe, Shield, Bell, Database, Save, ChevronRight, Download } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { api } from '@/lib/api';
 import { useTheme } from 'next-themes';
@@ -48,6 +48,41 @@ const SYSTEM_DEFAULTS = {
   backupEnabled: true, backupFrequency: 'daily', logRetentionDays: 30, cacheEnabled: true, sessionTimeout: 1440,
 };
 
+const DEFAULT_BACKUP_ERROR = 'Failed to download backup';
+
+/** When using responseType: 'blob', Axios gives error.response.data as a Blob. Parse it to get the API error message. */
+async function getErrorMessageFromBlobResponse(error: any): Promise<string> {
+  const data = error?.response?.data;
+  if (!error?.response) {
+    const msg = error?.message || '';
+    if (msg.toLowerCase().includes('network') || error?.code === 'ECONNABORTED' || error?.code === 'ERR_NETWORK') {
+      return 'Network error. Check that the API server is running and reachable, then try again.';
+    }
+    if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+      return 'Request timed out. The backup may be large; try again.';
+    }
+    return msg || DEFAULT_BACKUP_ERROR;
+  }
+  if (!data) return error?.message || DEFAULT_BACKUP_ERROR;
+  if (typeof data === 'object' && data !== null && typeof (data as { message?: string }).message === 'string') {
+    return (data as { message: string }).message;
+  }
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    try {
+      const text = await data.text();
+      const parsed = JSON.parse(text) as { message?: string };
+      if (typeof parsed?.message === 'string') return parsed.message;
+    } catch {
+      // ignore parse errors
+    }
+  }
+  const status = error?.response?.status;
+  if (status === 401) return 'Not authorized. Please log in again.';
+  if (status === 403) return 'You do not have permission to download backups.';
+  if (status === 404) return 'No backups available.';
+  return DEFAULT_BACKUP_ERROR;
+}
+
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState('general');
   const [general, setGeneral]     = useState(GENERAL_DEFAULTS);
@@ -57,6 +92,7 @@ export default function SettingsPage() {
   const [system, setSystem]         = useState(SYSTEM_DEFAULTS);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
 
   // Load settings from backend when component mounts
   useEffect(() => {
@@ -124,6 +160,42 @@ export default function SettingsPage() {
 
   const { setTheme } = useTheme();
   
+  const handleDownloadBackup = async () => {
+    try {
+      setDownloadingBackup(true);
+      const response = await api.get('/settings/backups/latest', {
+        responseType: 'blob',
+        timeout: 120000,
+      });
+
+      // Success: response.data is the file blob
+      const blob = new Blob([response.data], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      const disposition = response.headers['content-disposition'] as string | undefined;
+      let filename = 'backup-latest.json';
+      if (disposition) {
+        const match = disposition.match(/filename="?([^"]+)"?/i);
+        if (match?.[1]) filename = match[1];
+      }
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Backup download started');
+    } catch (error: any) {
+      const message = await getErrorMessageFromBlobResponse(error);
+      toast.error(message);
+    } finally {
+      setDownloadingBackup(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -330,9 +402,10 @@ export default function SettingsPage() {
                   <div>
                     <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>Google Site Verification</label>
                     <input value={seo.googleSiteVerification} onChange={e => setSeo(p => ({ ...p, googleSiteVerification: e.target.value }))}
-                      placeholder="Google Search Console verification code"
+                      placeholder="Google Search Console verification code (meta tag content)"
                       className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none"
                       style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Set NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION in the frontend env to this value so the verification meta tag is rendered on the site.</p>
                   </div>
                   {[
                     { label: 'Auto-generate sitemap', key: 'generateSitemap' },
@@ -433,6 +506,26 @@ export default function SettingsPage() {
                     placeholder="Comma separated file extensions (e.g., jpg,jpeg,png,pdf)"
                     className="w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none"
                     style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
+                </div>
+
+                <div className="mt-4 p-4 rounded-xl flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                  style={{ backgroundColor: 'var(--bg)' }}>
+                  <div>
+                    <p className="text-sm font-medium">On-demand backup export</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Download the latest server-side JSON backup snapshot. Only system administrators can access this.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadBackup}
+                    disabled={downloadingBackup}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition disabled:opacity-60"
+                    style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--accent-text)' }}
+                  >
+                    <Download size={14} />
+                    {downloadingBackup ? 'Preparing backup…' : 'Download latest backup'}
+                  </button>
                 </div>
               </div>
             )}

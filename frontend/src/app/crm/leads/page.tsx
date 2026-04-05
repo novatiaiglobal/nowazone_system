@@ -8,11 +8,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CircleDollarSign, Filter, Plus, RefreshCw, Search,
-  Target, Users2, TrendingUp, MoreHorizontal,
+  Target, Users2, TrendingUp, Trash2,
   Mail, Phone, Building2, Zap, CalendarClock, User, X,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { showError, showSuccess } from '@/lib/sweetalert';
+import { showConfirm, showError, showSuccess } from '@/lib/sweetalert';
 
 const addLeadSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -95,6 +95,28 @@ export default function LeadsPage() {
     },
   });
 
+  const updateLeadMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<Lead> }) => api.patch(`/leads/${id}`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      showSuccess('Lead updated successfully');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      showError(err.response?.data?.message || 'Failed to update lead');
+    },
+  });
+
+  const deleteLeadMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/leads/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      showSuccess('Lead deleted successfully');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      showError(err.response?.data?.message || 'Failed to delete lead');
+    },
+  });
+
   const { register, handleSubmit, formState: { errors }, reset } = useForm<AddLeadForm>({
     resolver: zodResolver(addLeadSchema),
     defaultValues: { name: '', email: '', phone: '', company: '', source: 'website' },
@@ -106,6 +128,16 @@ export default function LeadsPage() {
   const openAddModal = () => {
     reset();
     setAddModalOpen(true);
+  };
+
+  const updateLeadStatus = (id: string, status: LeadStatus) => {
+    updateLeadMutation.mutate({ id, payload: { status } });
+  };
+
+  const deleteLead = async (id: string, name?: string) => {
+    const result = await showConfirm('Delete lead?', `This will permanently delete ${name || 'this lead'}.`);
+    if (!result.isConfirmed) return;
+    deleteLeadMutation.mutate(id);
   };
 
   const filteredLeads = useMemo(() => {
@@ -461,15 +493,37 @@ export default function LeadsPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="md:col-span-1 flex items-center justify-end">
+                  <div className="md:col-span-1 flex items-center justify-end gap-2">
+                    <select
+                      value={s}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateLeadStatus(lead._id, e.target.value as LeadStatus)}
+                      className="px-2 py-1 rounded-md border text-[11px] focus:outline-none cursor-pointer"
+                      style={{
+                        backgroundColor: 'var(--surface)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      {(Object.keys(STATUS_CONFIG) as LeadStatus[]).map((statusOption) => (
+                        <option key={statusOption} value={statusOption}>
+                          {STATUS_CONFIG[statusOption].label}
+                        </option>
+                      ))}
+                    </select>
                     <motion.button
                       type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteLead(lead._id, lead.name);
+                      }}
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
                       className="p-1.5 rounded-md cursor-pointer"
-                      style={{ color: 'var(--text-muted)' }}
+                      style={{ color: 'var(--error)' }}
+                      title="Delete lead"
                     >
-                      <MoreHorizontal size={15} />
+                      <Trash2 size={15} />
                     </motion.button>
                   </div>
                 </motion.div>

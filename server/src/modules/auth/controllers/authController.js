@@ -26,8 +26,12 @@ const PERMISSION_MODULES = [
   { moduleKey: 'cms_read', moduleLabel: 'Content (Read)', permissionKey: 'cms.read', capabilityLabel: 'View Posts, Pages, Categories' },
   { moduleKey: 'editorial', moduleLabel: 'Content (Create/Edit)', permissionKey: 'cms.update', capabilityLabel: 'Create & Edit Content' },
   { moduleKey: 'cms_delete', moduleLabel: 'Content (Delete)', permissionKey: 'cms.delete', capabilityLabel: 'Delete Content' },
+  { moduleKey: 'seo_read', moduleLabel: 'SEO (Read)', permissionKey: 'seo.read', capabilityLabel: 'View SEO Pages, Audit, Redirects, Keywords' },
+  { moduleKey: 'seo_write', moduleLabel: 'SEO (Write)', permissionKey: 'seo.write', capabilityLabel: 'Create & Edit SEO Pages, Redirects, Keywords' },
+  { moduleKey: 'seo_publish', moduleLabel: 'SEO (Publish)', permissionKey: 'seo.publish', capabilityLabel: 'Publish & Archive SEO Pages' },
   { moduleKey: 'analytics', moduleLabel: 'Analytics', permissionKey: 'analytics.read', capabilityLabel: 'View Analytics & Reports' },
   { moduleKey: 'support', moduleLabel: 'Service Operations', permissionKey: 'tickets.update', capabilityLabel: 'Support Workflow' },
+  { moduleKey: 'chatbot', moduleLabel: 'Chatbot', permissionKey: 'chatbot.manage', capabilityLabel: 'Manage Chatbot & Sessions' },
   { moduleKey: 'crm', moduleLabel: 'CRM & Growth', permissionKey: 'crm.write', capabilityLabel: 'Lead Lifecycle' },
 ];
 
@@ -158,6 +162,42 @@ class AuthController {
     }
   }
 
+  // POST /auth/google  (public) — Sign in with Google ID token; find or create customer user
+  async googleLogin(req, res, next) {
+    try {
+      const { id_token } = req.validated;
+      const ipAddress = req.ip;
+      const userAgent = req.get('user-agent');
+
+      const result = await authService.googleLoginOrRegister(id_token, ipAddress, userAgent);
+
+      const csrfToken = crypto.randomBytes(32).toString('hex');
+      setAuthCookies(res, {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        csrfToken,
+        refreshTokenTtlMs: result.refreshTokenTtlMs,
+      });
+
+      const responseData = {
+        user: result.user,
+        csrfToken,
+        ...(isMobileClient(req) && {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        }),
+      };
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Signed in with Google',
+        data: responseData,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // POST /auth/refresh  (public)
   async refreshToken(req, res, next) {
     try {
@@ -228,9 +268,32 @@ class AuthController {
       const csrfToken = crypto.randomBytes(32).toString('hex');
       res.cookie('csrf-token', csrfToken, csrfCookieOptions());
 
+      let u = req.user;
+      const roles = u.roles?.length ? u.roles : (u.role ? [u.role] : []);
+      if (roles.includes('support_executive')) {
+        const matrixDefaults = authService.getDefaultPermissionsFromMatrix('support_executive');
+        const perms = u.permissions || [];
+        const missing = matrixDefaults.filter((p) => !perms.includes(p));
+        if (missing.length > 0) {
+          const userDoc = await User.findById(u._id).select('permissions');
+          if (userDoc) {
+            const merged = [...new Set([...(userDoc.permissions || []), ...matrixDefaults])];
+            userDoc.permissions = merged;
+            await userDoc.save();
+            u = await User.findById(u._id).select('-password -twoFactorSecret -twoFactorCodeHash -twoFactorCodeExpires -passwordResetToken -passwordResetExpires -failedLoginAttempts -lockoutUntil -tokenInvalidBefore');
+          }
+        }
+      }
+
+      const userObj = u.toObject ? u.toObject() : { ...u };
+      const safeUser = {
+        ...userObj,
+        roles: u.roles?.length ? u.roles : (u.role ? [u.role] : []),
+      };
+
       res.status(200).json({
         status: 'success',
-        data: { user: req.user, csrfToken },
+        data: { user: safeUser, csrfToken },
       });
     } catch (error) {
       next(error);
@@ -310,11 +373,10 @@ class AuthController {
       const { email } = req.validated;
       const result = await authService.forgotPassword(email);
 
-      // Always 200 — prevents email enumeration
+      // Always 200 — prevents email enumeration; never expose reset link in response
       res.status(200).json({
         status: 'success',
         message: result.message,
-        ...(process.env.NODE_ENV !== 'production' && result.resetUrl ? { data: { resetUrl: result.resetUrl } } : {}),
       });
     } catch (error) {
       next(error);
@@ -443,10 +505,14 @@ class AuthController {
         User.countDocuments(),
       ]);
 
-      const normalizedUsers = users.map((u) => ({
-        ...u.toObject(),
-        isLocked: Boolean(u.lockoutUntil && u.lockoutUntil > new Date()),
-      }));
+      const normalizedUsers = users.map((u) => {
+        const obj = u.toObject ? u.toObject() : u;
+        return {
+          ...obj,
+          roles: u.roles?.length ? u.roles : (u.role ? [u.role] : []),
+          isLocked: Boolean(u.lockoutUntil && u.lockoutUntil > new Date()),
+        };
+      });
 
       res.status(200).json({
         status: 'success',
@@ -500,10 +566,16 @@ class AuthController {
 
       await user.save({ validateBeforeSave: true });
 
+      const userObj = user.toObject ? user.toObject() : user;
+      const safeUser = {
+        ...userObj,
+        roles: user.roles?.length ? user.roles : (user.role ? [user.role] : []),
+      };
+
       res.status(200).json({
         status: 'success',
         message: 'User updated successfully',
-        data: { user },
+        data: { user: safeUser },
       });
     } catch (error) {
       next(error);
@@ -545,10 +617,16 @@ class AuthController {
         ipSummary.set(key, count + 1);
       });
 
+      const userObj = user.toObject ? user.toObject() : user;
+      const safeUser = {
+        ...userObj,
+        roles: user.roles?.length ? user.roles : (user.role ? [user.role] : []),
+      };
+
       res.status(200).json({
         status: 'success',
         data: {
-          user,
+          user: safeUser,
           security: {
             failedLoginAttempts: user.failedLoginAttempts || 0,
             lockoutUntil: user.lockoutUntil || null,
@@ -868,14 +946,22 @@ class AuthController {
 
       const rolePermissions = [];
       for (const role of ROLE_ORDER) {
-        const permissions = savedMap.has(role)
-          ? savedMap.get(role)
-          : await authService.getDefaultPermissions(role);
+        const savedPerms = savedMap.get(role) || [];
+        const matrixDefaults = authService.getDefaultPermissionsFromMatrix(role) || [];
+        const merged = [...new Set([...savedPerms, ...matrixDefaults])];
         rolePermissions.push({
           role,
           label: ROLE_LABELS[role] || role,
-          permissions,
+          permissions: merged,
         });
+        if (merged.length > savedPerms.length) {
+          await RolePermission.findOneAndUpdate(
+            { role },
+            { role, permissions: merged, updatedBy: req.user._id },
+            { upsert: true, new: true }
+          );
+          await User.updateMany({ role }, { permissions: merged });
+        }
       }
 
       const matrix = PERMISSION_MODULES.map((module) => ({

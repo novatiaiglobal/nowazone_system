@@ -23,7 +23,6 @@ interface ContentDashboardStats {
   totalPosts: number;
   draftPosts: number;
   publishedPosts: number;
-  totalPages: number;
   totalCategories: number;
   totalTags: number;
   pendingComments: number;
@@ -39,7 +38,6 @@ const defaultStats: ContentDashboardStats = {
   totalPosts: 0,
   draftPosts: 0,
   publishedPosts: 0,
-  totalPages: 0,
   totalCategories: 0,
   totalTags: 0,
   pendingComments: 0,
@@ -90,15 +88,6 @@ export default function ContentOverviewPage() {
       trend: 'View live',
     },
     {
-      label: 'Pages',
-      value: loading ? '—' : stats.totalPages,
-      icon: <FileStack size={20} />,
-      color: 'var(--info)',
-      bg: 'var(--info-subtle)',
-      href: '/dashboard/pages',
-      trend: 'Manage pages',
-    },
-    {
       label: 'Categories',
       value: loading ? '—' : stats.totalCategories,
       icon: <FolderOpen size={20} />,
@@ -129,7 +118,6 @@ export default function ContentOverviewPage() {
 
   const quickActions = [
     { label: 'Posts', icon: <FileText size={16} />, href: '/dashboard/posts', color: 'var(--accent)' },
-    { label: 'Pages', icon: <FileStack size={16} />, href: '/dashboard/pages', color: 'var(--info)' },
     { label: 'Categories', icon: <FolderOpen size={16} />, href: '/dashboard/categories', color: 'var(--warning)' },
     { label: 'Tags', icon: <Tag size={16} />, href: '/dashboard/tags', color: 'var(--text-muted)' },
     { label: 'Comments', icon: <MessageCircle size={16} />, href: '/dashboard/comments', color: 'var(--success)' },
@@ -234,8 +222,7 @@ export default function ContentOverviewPage() {
             Content Module
           </h2>
           <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-            Use <strong>Posts</strong> to create and publish blog articles. <strong>Pages</strong> are for static
-            content with dynamic sections. <strong>Categories</strong> and <strong>Tags</strong> help organize content.
+            Use <strong>Posts</strong> to create and publish blog articles. <strong>Categories</strong> and <strong>Tags</strong> help organize content.
             Moderate <strong>Comments</strong> and manage <strong>FAQ</strong> entries from the links above.
           </p>
         </motion.div>

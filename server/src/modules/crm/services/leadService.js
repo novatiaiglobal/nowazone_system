@@ -1,6 +1,7 @@
 const Lead = require('../models/Lead');
 const User = require('../../auth/models/User');
 const { AppError } = require('../../../shared/middleware/errorHandler');
+const externalCrm = require('./externalCrmService');
 
 class LeadService {
   async getLeads({ page, limit, status, assignedTo, followUpDue }) {
@@ -46,7 +47,41 @@ class LeadService {
     }
 
     const lead = await Lead.create(data);
-    return lead.populate('assignedTo', 'name email');
+    const populated = await lead.populate('assignedTo', 'name email');
+
+    // Best-effort external CRM sync; never block lead creation on failure.
+    externalCrm.syncLead(populated.toObject())
+      .then((crm) => {
+        if (!crm) return;
+        return Lead.findByIdAndUpdate(
+          populated._id,
+          {
+            externalCrm: {
+              provider: crm.provider,
+              externalId: crm.externalId,
+              syncStatus: 'synced',
+              lastSyncAt: new Date(),
+            },
+          },
+          { new: true }
+        ).exec().catch(() => {});
+      })
+      .catch((err) => {
+        Lead.findByIdAndUpdate(
+          populated._id,
+          {
+            externalCrm: {
+              provider: process.env.CRM_PROVIDER || 'hubspot',
+              syncStatus: 'error',
+              lastSyncAt: new Date(),
+              lastError: err?.message || 'External CRM sync failed',
+            },
+          },
+          { new: true }
+        ).exec().catch(() => {});
+      });
+
+    return populated;
   }
 
   async getLeadById(id) {

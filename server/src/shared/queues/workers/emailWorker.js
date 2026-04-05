@@ -4,6 +4,7 @@ const {
   send2FACodeEmail,
   sendPasswordResetEmail,
   sendApplicationStatusEmail,
+  sendNewsletterEmail,
 } = require('../../services/emailService');
 
 const EMAIL_QUEUE_NAME = 'email';
@@ -32,6 +33,13 @@ async function processEmailJob(job) {
         name: payload.name,
         status: payload.status,
         jobTitle: payload.jobTitle,
+      });
+    case 'newsletter':
+      return sendNewsletterEmail({
+        to: payload.to,
+        subject: payload.subject,
+        html: payload.html,
+        text: payload.text,
       });
     default:
       console.warn(`[EmailWorker] Unknown job type: ${type}`);

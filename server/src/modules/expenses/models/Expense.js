@@ -1,0 +1,25 @@
+const mongoose = require('mongoose');
+
+const expenseSchema = new mongoose.Schema({
+  description: { type: String, required: true, trim: true },
+  amount: { type: Number, required: true, min: 0 },
+  category: {
+    type: String,
+    enum: ['office', 'software', 'travel', 'marketing', 'utilities', 'payroll', 'supplies', 'other'],
+    default: 'other',
+  },
+  vendor: { type: String, trim: true },
+  date: { type: Date, required: true, default: () => new Date() },
+  currency: { type: String, default: 'USD' },
+  status: { type: String, enum: ['pending', 'approved', 'reimbursed', 'rejected'], default: 'pending' },
+  receiptUrl: { type: String },
+  notes: { type: String },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { timestamps: true });
+
+expenseSchema.index({ date: -1 });
+expenseSchema.index({ category: 1 });
+expenseSchema.index({ status: 1 });
+expenseSchema.index({ vendor: 1 });
+
+module.exports = mongoose.model('Expense', expenseSchema);

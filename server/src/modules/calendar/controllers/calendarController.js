@@ -249,7 +249,8 @@ exports.syncGoogleCalendar = async (req, res, next) => {
 
     const events = await CalendarEvent.find(eventFilter).sort({ startAt: 1 });
 
-    const endpoint = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+    const endpointBase = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
+    const endpoint = `${endpointBase}?conferenceDataVersion=1`;
     let syncedCount = 0;
     const errors = [];
 
@@ -268,6 +269,12 @@ exports.syncGoogleCalendar = async (req, res, next) => {
           private: {
             source: 'nowazone',
             sourceEventId: String(event._id),
+          },
+        },
+        conferenceData: {
+          createRequest: {
+            requestId: `nowazone-${event._id}-${Date.now()}`,
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
           },
         },
       };
@@ -290,6 +297,16 @@ exports.syncGoogleCalendar = async (req, res, next) => {
       const created = await response.json();
       event.googleEventId = created.id || event.googleEventId;
       event.source = 'google';
+      const meetLink =
+        created.hangoutLink ||
+        created.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri ||
+        '';
+      if (meetLink) {
+        event.meetingUrl = meetLink;
+        if (!event.location) {
+          event.location = meetLink;
+        }
+      }
       await event.save({ validateBeforeSave: false });
       syncedCount += 1;
     }

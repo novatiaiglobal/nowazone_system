@@ -13,6 +13,7 @@ const {
   adminCreateUserSchema,
   adminUpdateUserSchema,
   loginSchema,
+  googleLoginSchema,
   refreshTokenSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
@@ -42,6 +43,14 @@ router.post(
   validate(loginSchema),
   auditLogger('USER_LOGIN'),
   authController.login
+);
+
+router.post(
+  '/google',
+  authLimiter,
+  validate(googleLoginSchema),
+  auditLogger('USER_GOOGLE_LOGIN'),
+  authController.googleLogin
 );
 
 // refresh: reads token from httpOnly cookie (web) OR body (API/mobile)

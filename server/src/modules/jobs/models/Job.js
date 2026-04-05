@@ -14,6 +14,7 @@ const jobSchema = new mongoose.Schema({
   salaryMax: { type: Number },
   currency: { type: String, default: 'USD' },
   status: { type: String, enum: ['draft', 'active', 'paused', 'closed'], default: 'active' },
+  positions: { type: Number, default: 1, min: 1 },
   postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   applicationDeadline: { type: Date },
   applicationCount: { type: Number, default: 0 },

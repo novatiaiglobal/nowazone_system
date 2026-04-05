@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
+    "dev": "nodemon --watch src --ext js --ignore backups src/server.js",
     "start": "node src/server.js",
     "seed:dashboard": "node src/scripts/seedDashboard.js",
     "seed:chatbot": "node src/scripts/chatbotFaqSeed.js",
@@ -44,6 +44,7 @@
     "pdfkit": "^0.17.2",
     "rate-limit-redis": "^4.2.0",
     "socket.io": "^4.8.3",
+    "svg-to-pdfkit": "^0.1.8",
     "zod": "^3.23.8"
   },
   "devDependencies": {

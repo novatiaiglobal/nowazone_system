@@ -12,6 +12,12 @@ const router = express.Router();
 const FINANCE_ROLES = ['admin', 'super_admin', 'finance_manager'];
 
 router.use(protect);
+
+// Client: my invoices (any authenticated user can access their own)
+router.get('/client/mine', ctrl.listMyInvoices);
+router.get('/client/:id', ctrl.getMyInvoice);
+router.get('/client/:id/pdf', ctrl.downloadMyInvoicePdf);
+
 router.use(restrictTo(...FINANCE_ROLES));
 
 router.get('/stats', ctrl.getStats);

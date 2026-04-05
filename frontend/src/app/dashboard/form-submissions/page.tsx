@@ -274,10 +274,7 @@ export default function FormSubmissionsPage() {
       </motion.div>
 
       {/* Table */}
-      <motion.div
-        variants={stagger}
-        initial="hidden"
-        animate="show"
+      <div
         className="border rounded-2xl overflow-hidden"
         style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}
       >
@@ -309,16 +306,19 @@ export default function FormSubmissionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                {submissions.map((sub) => {
+                {submissions.map((sub, idx) => {
                   const typeConf = TYPE_CONFIG[sub.type] || TYPE_CONFIG.contact;
                   const statusConf = STATUS_CONFIG[sub.status] || STATUS_CONFIG.new;
                   return (
                     <motion.tr
                       key={sub._id}
-                      variants={fadeUp}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, delay: idx * 0.03 }}
                       whileHover={{ backgroundColor: 'var(--surface-muted)' }}
                       className="transition-colors cursor-pointer"
                       onClick={() => openDetail(sub)}
+                      style={{ backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
                     >
                       <td className="px-6 py-4 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} suppressHydrationWarning>
                         {new Date(sub.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -411,7 +411,7 @@ export default function FormSubmissionsPage() {
             </table>
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* Pagination */}
       {total > 20 && (
