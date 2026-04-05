@@ -39,6 +39,11 @@ const PERMISSION_MODULES = [
 // Centralised so every set/clear call uses identical flags.
 
 const isProduction = () => process.env.NODE_ENV === 'production';
+const csrfCookieDomain = (() => {
+  const raw = process.env.CSRF_COOKIE_DOMAIN?.trim();
+  if (!raw) return undefined;
+  return raw.startsWith('.') ? raw : `.${raw}`;
+})();
 
 const cookieOptions = (maxAgeMs) => ({
   httpOnly: true,
@@ -60,6 +65,7 @@ const csrfCookieOptions = () => ({
   sameSite: isProduction() ? 'none' : 'lax',
   path: '/',
   maxAge: CSRF_TOKEN_TTL,
+  ...(csrfCookieDomain ? { domain: csrfCookieDomain } : {}),
 });
 
 const clearCookieOptions = () => ({
@@ -92,7 +98,11 @@ const setAuthCookies = (res, { accessToken, refreshToken, csrfToken, refreshToke
 const clearAuthCookies = (res) => {
   res.clearCookie('accessToken',  clearCookieOptions());
   res.clearCookie('refreshToken', clearCookieOptions());
-  res.clearCookie('csrf-token',   { ...clearCookieOptions(), httpOnly: false });
+  res.clearCookie('csrf-token', {
+    ...clearCookieOptions(),
+    httpOnly: false,
+    ...(csrfCookieDomain ? { domain: csrfCookieDomain } : {}),
+  });
 };
 
 // ─── Controller ───────────────────────────────────────────────────────────────
