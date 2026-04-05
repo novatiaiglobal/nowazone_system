@@ -45,7 +45,7 @@ const createRateLimiter = (options = {}) => {
 /** Strict limiter for login and register — only 5 attempts per 15 min. */
 const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: Math.min(parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 5, 20),
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 5,
   message: {
     status:  'fail',
     message: 'Too many authentication attempts. Please try again in 15 minutes.',
@@ -55,7 +55,7 @@ const authLimiter = createRateLimiter({
 /** Dedicated limiter for the refresh endpoint — prevents token brute-force. */
 const refreshLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: Math.min(parseInt(process.env.REFRESH_RATE_LIMIT_MAX, 10) || 20, 100),
+  max: parseInt(process.env.REFRESH_RATE_LIMIT_MAX, 10) || 20,
   message: {
     status:  'fail',
     message: 'Too many token refresh requests. Please try again later.',
@@ -65,7 +65,7 @@ const refreshLimiter = createRateLimiter({
 /** Strict limiter for password-reset request — prevents email enumeration abuse. */
 const forgotPasswordLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1-hour window
-  max: Math.min(parseInt(process.env.FORGOT_RATE_LIMIT_MAX, 10) || 5, 10),
+  max: parseInt(process.env.FORGOT_RATE_LIMIT_MAX, 10) || 5,
   message: {
     status:  'fail',
     message: 'Too many password reset requests. Please try again in an hour.',
@@ -75,7 +75,7 @@ const forgotPasswordLimiter = createRateLimiter({
 /** General API limiter — applied to all /api routes. */
 const apiLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: Math.min(parseInt(process.env.API_RATE_LIMIT_MAX, 10) || 100, 500),
+  max: parseInt(process.env.API_RATE_LIMIT_MAX, 10) || 100,
 });
 
 module.exports = { createRateLimiter, authLimiter, refreshLimiter, forgotPasswordLimiter, apiLimiter };
