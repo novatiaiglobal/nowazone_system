@@ -184,7 +184,9 @@ export default function ProfilePage() {
     formData.append('image', file);
     setAvatarUploading(true);
     try {
-      const { data } = await api.patch('/auth/profile/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.patch('/auth/profile/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       const uploaded = data?.data?.profileImage;
       if (uploaded?.url) setProfile((p) => p ? { ...p, profileImage: uploaded } : p);
       toast.success('Profile image updated');

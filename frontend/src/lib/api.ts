@@ -3,6 +3,8 @@ import axios from 'axios';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 const isBrowser = typeof window !== 'undefined';
+const CSRF_STORAGE_KEY = 'nowazone.csrfToken';
+let csrfTokenMemory: string | null = null;
 
 // ─── CSRF helpers ─────────────────────────────────────────────────────────────
 // The backend sets a non-httpOnly `csrf-token` cookie that JavaScript can read.
@@ -15,6 +17,51 @@ const getCsrfCookie = (): string | null => {
   const match = document.cookie.match(/(^|;\s*)csrf-token=([^;]+)/);
   return match ? decodeURIComponent(match[2]) : null;
 };
+
+const readStoredCsrfToken = (): string | null => {
+  if (!isBrowser) return null;
+  if (csrfTokenMemory) return csrfTokenMemory;
+  try {
+    csrfTokenMemory = window.localStorage.getItem(CSRF_STORAGE_KEY);
+  } catch {
+    csrfTokenMemory = null;
+  }
+  return csrfTokenMemory;
+};
+
+const storeCsrfToken = (token: unknown) => {
+  if (!isBrowser || typeof token !== 'string' || !token.trim()) return;
+  csrfTokenMemory = token;
+  try {
+    window.localStorage.setItem(CSRF_STORAGE_KEY, token);
+  } catch {
+    // Ignore storage errors (private mode / disabled storage).
+  }
+};
+
+const clearStoredCsrfToken = () => {
+  if (!isBrowser) return;
+  csrfTokenMemory = null;
+  try {
+    window.localStorage.removeItem(CSRF_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const extractCsrfTokenFromResponse = (responseData: unknown): string | null => {
+  if (!responseData || typeof responseData !== 'object') return null;
+  const root = responseData as Record<string, unknown>;
+  if (typeof root.csrfToken === 'string' && root.csrfToken) return root.csrfToken;
+  const data = root.data;
+  if (data && typeof data === 'object') {
+    const nested = data as Record<string, unknown>;
+    if (typeof nested.csrfToken === 'string' && nested.csrfToken) return nested.csrfToken;
+  }
+  return null;
+};
+
+const getCsrfTokenForRequest = (): string | null => getCsrfCookie() || readStoredCsrfToken();
 
 // ─── Axios instance ───────────────────────────────────────────────────────────
 
@@ -30,11 +77,24 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
+    const isFormDataPayload =
+      typeof FormData !== 'undefined' && config.data instanceof FormData;
+    if (isFormDataPayload && config.headers) {
+      const headers = config.headers as Record<string, unknown> & { delete?: (key: string) => void };
+      if (typeof headers.delete === 'function') {
+        headers.delete('Content-Type');
+        headers.delete('content-type');
+      } else {
+        delete headers['Content-Type'];
+        delete headers['content-type'];
+      }
+    }
+
     if (!isBrowser) return config;
 
     const method = (config.method || 'GET').toUpperCase();
     if (!SAFE_METHODS.has(method)) {
-      const csrfToken = getCsrfCookie();
+      const csrfToken = getCsrfTokenForRequest();
       if (csrfToken) {
         config.headers['X-CSRF-Token'] = csrfToken;
       }
@@ -63,16 +123,39 @@ const notifyRefreshSubscribers = (ok: boolean) => {
 };
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const csrfToken = extractCsrfTokenFromResponse(response.data);
+    if (csrfToken) storeCsrfToken(csrfToken);
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     const isUnauthorized  = error.response?.status === 401;
+    const responseStatus  = error.response?.status;
+    const responseMessage = String(error.response?.data?.message || '').toLowerCase();
+    const isCsrfError     = responseStatus === 403 && responseMessage.includes('csrf token');
     const isRefreshRoute  = originalRequest?.url?.includes('/auth/refresh');
     const isAuthRoute     = originalRequest?.url?.includes('/auth/login') ||
                             originalRequest?.url?.includes('/auth/register') ||
                             originalRequest?.url?.includes('/auth/forgot-password') ||
                             originalRequest?.url?.includes('/auth/reset-password') ||
                             originalRequest?.url?.includes('/auth/2fa/verify-login');
+
+    if (isCsrfError && originalRequest && !originalRequest._csrfRetry) {
+      originalRequest._csrfRetry = true;
+      try {
+        const profileResponse = await axios.get(`${API_BASE_URL}/auth/profile`, {
+          withCredentials: true,
+        });
+        const nextCsrfToken = extractCsrfTokenFromResponse(profileResponse.data);
+        if (nextCsrfToken) {
+          storeCsrfToken(nextCsrfToken);
+          return api(originalRequest);
+        }
+      } catch {
+        // If profile refresh fails, continue with normal error handling.
+      }
+    }
 
     // Redirect to maintenance page when API returns 503 maintenance message (skip for auth so admins can log in / load profile)
     const requestUrl = originalRequest?.url ?? '';
@@ -103,17 +186,24 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        const csrfToken = getCsrfTokenForRequest();
         // Refresh token is in the httpOnly cookie — no body payload needed for web
-        await axios.post(
+        const refreshResponse = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { withCredentials: true }
+          {
+            withCredentials: true,
+            headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
+          }
         );
+        const refreshedCsrfToken = extractCsrfTokenFromResponse(refreshResponse.data);
+        if (refreshedCsrfToken) storeCsrfToken(refreshedCsrfToken);
 
         notifyRefreshSubscribers(true);
         return api(originalRequest);
       } catch {
         notifyRefreshSubscribers(false);
+        clearStoredCsrfToken();
 
         if (isBrowser && window.location.pathname !== '/auth/login') {
           window.location.href = '/auth/login';
